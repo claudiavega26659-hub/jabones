@@ -9,18 +9,20 @@
 
 Las ventas, la producción y las compras **no** van en estos archivos. El panel las guarda en `datos.json`, dentro de un repositorio **privado**.
 
-## Puesta en marcha (una sola vez)
+## Puesta en marcha con GitHub Desktop (una sola vez)
 
-1. **Repositorio público:** en GitHub, entra a **New repository**, ponle de nombre `jabones`, márcalo **Public** y créalo.
-   Luego toca **Add file → Upload files** y arrastra los 5 archivos de esta carpeta (no hace falta subir este LEEME). Para terminar, toca **Commit changes**.
-2. **Activar la página:** en ese repositorio entra a **Settings → Pages**. En *Source* elige **Deploy from a branch**, luego la rama **main** y la carpeta **/ (root)**, y toca **Save**.
-   En uno o dos minutos la página queda en `https://TU-USUARIO.github.io/jabones/`.
-3. **Repositorio privado:** crea otro repositorio llamado `jabones-datos` y márcalo **Private**. Activa la casilla *Add a README* para que no quede vacío.
-4. **Clave de acceso (token):** entra a tu foto → **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**.
+Las carpetas `jabones` y `jabones-datos` ya están preparadas como repositorios.
+
+1. **Publicar la página:** en GitHub Desktop entra a **File → Add local repository**, elige la carpeta `Jabones\jabones` y toca **Publish repository**. **Desmarca** *Keep this code private* y toca **Publish repository**.
+2. **Publicar los datos:** repite el paso 1 con la carpeta `Jabones\jabones-datos`, pero esta vez **deja marcada** *Keep this code private*.
+3. **Activar la página:** en github.com, abre el repositorio `jabones` y entra a **Settings → Pages**. En *Source* elige **Deploy from a branch**, luego la rama **main** y la carpeta **/ (root)**, y toca **Save**. En uno o dos minutos la página queda en `https://TU-USUARIO.github.io/jabones/`.
+4. **Clave de acceso (token):** abre https://github.com/settings/personal-access-tokens/new
    - En *Repository access* elige **Only select repositories** y marca `jabones` y `jabones-datos`.
    - En *Permissions → Repository permissions → Contents* elige **Read and write**.
    - Genera la clave y cópiala, porque GitHub solo la muestra una vez.
 5. **Entrar al panel:** abre `https://TU-USUARIO.github.io/jabones/admin.html` y escribe tu usuario y la clave. Queda guardada solo en ese navegador; repite este paso en cada celular o computadora que uses.
+
+**Importante:** el panel guarda los cambios directamente en GitHub. Si después quieres cambiar algo de la página desde esta carpeta, primero toca **Fetch origin** y **Pull** en GitHub Desktop, para no borrar lo que se guardó desde el panel.
 
 ## Para tener en cuenta
 
