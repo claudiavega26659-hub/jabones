@@ -9,20 +9,19 @@
   "productos": [
     {
       "id": "ej1",
-      "ejemplo": true,
-      "nombre": "Avena y miel",
-      "descripcion": "Limpieza suave que calma la piel irritada y la deja hidratada. Ideal para uso diario en cara y cuerpo.",
+      "nombre": "Jabon de Arroz y avena",
+      "descripcion": "Elimina manchas",
       "pieles": [
+        "normal",
         "seca",
-        "sensible",
-        "normal"
+        "sensible"
       ],
-      "ingredientes": "Aceite de oliva, aceite de coco, manteca de karité, avena coloidal, miel de abeja.",
+      "ingredientes": "Arroz y avena",
       "uso": "Humedece el jabón, haz espuma entre las manos y masajea la piel. Enjuaga con agua tibia. Guárdalo en una jabonera que escurra.",
       "peso": 100,
       "precio": 4.5,
-      "color": "#cfb383",
-      "foto": "",
+      "color": "#f0e3cb",
+      "foto": "fotos/ej1-mv2qm38m.jpg",
       "visible": true,
       "agotado": false
     },
