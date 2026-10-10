@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Jabones Artesanales</title>
+<meta name="description" content="Catálogo de jabones artesanales. Elige tus jabones y haz tu pedido por WhatsApp.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Young+Serif&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+<div id="tienda"><p class="cargando">Cargando catálogo…</p></div>
+<dialog id="dlg"></dialog>
+<div id="toast" class="toast" hidden></div>
+
+<script src="comun.js"></script>
+<script>
+let D = {config:{}, productos:[]};
+let filtroPiel = '', textoBusqueda = '';
+let carrito = leerLocal('jab_carrito', {});
+const prod = id => D.productos.find(p => p.id === id);
+const visibles = () => D.productos.filter(p => p.visible !== false);
+
+async function cargar() {
+  try {
+    const r = await fetch('catalogo.json?v=' + Date.now(), {cache:'no-store'});
+    if (!r.ok) throw new Error(r.status);
+    D = await r.json();
+    MONEDA = D.config.moneda || '$';
+    if (D.config.nombre) document.title = D.config.nombre;
+    renderTienda();
+  } catch {
+    $('#tienda').innerHTML = '<div class="wrap"><div class="vacio" style="margin-top:40px"><h3>No se pudo cargar el catálogo</h3>Revisa tu conexión y recarga la página.</div></div>';
+  }
+}
+
+function renderTienda() {
+  const c = D.config, todos = visibles();
+  const usadas = Object.keys(PIELES).filter(k => todos.some(p => (p.pieles || []).includes(k)));
+  const q = textoBusqueda.toLowerCase();
+  const lista = todos.filter(p => (!filtroPiel || (p.pieles || []).includes(filtroPiel)) &&
+    (!q || (p.nombre + ' ' + p.descripcion + ' ' + p.ingredientes).toLowerCase().includes(q)));
+  $('#tienda').innerHTML = `
+    <header class="wrap tienda-top">
+      <div class="marca"><div class="marca-sello" aria-hidden="true">${esc((c.nombre || 'J')[0])}</div><h1>${esc(c.nombre)}</h1></div>
+      ${c.slogan ? `<p class="slogan">${esc(c.slogan)}</p>` : ''}
+    </header>
+    <div class="wrap">
+      ${todos.length ? `<div class="filtros" role="group" aria-label="Filtrar por tipo de piel">
+        <span class="filtro-lbl">Tu piel</span>
+        <button class="chip" data-piel="" aria-pressed="${!filtroPiel}">Todas</button>
+        ${usadas.map(k => `<button class="chip" data-piel="${k}" aria-pressed="${filtroPiel === k}">${PIELES[k]}</button>`).join('')}
+        <input class="buscar" id="buscar" type="search" placeholder="Buscar jabón o ingrediente" value="${esc(textoBusqueda)}" aria-label="Buscar">
+      </div>` : ''}
+      <div class="rejilla">
+        ${lista.map(tarjeta).join('') || `<div class="vacio" style="grid-column:1/-1">${todos.length
+          ? '<h3>Ningún jabón coincide</h3>Prueba con otro tipo de piel o borra la búsqueda.'
+          : '<h3>El catálogo se está preparando</h3>Muy pronto verás aquí los jabones disponibles.'}</div>`}
+      </div>
+    </div>
+    ${barraPedido()}`;
+  $$('[data-piel]').forEach(b => b.onclick = () => { filtroPiel = b.dataset.piel; renderTienda(); });
+  const bus = $('#buscar');
+  if (bus) bus.oninput = () => { textoBusqueda = bus.value; const pos = bus.selectionStart; renderTienda(); const n = $('#buscar'); n.focus(); n.setSelectionRange(pos, pos); };
+  $$('[data-ver]').forEach(b => b.onclick = () => verDetalle(b.dataset.ver));
+  $$('[data-mas]').forEach(b => b.onclick = () => cambiarCarrito(b.dataset.mas, 1));
+  $$('[data-menos]').forEach(b => b.onclick = () => cambiarCarrito(b.dataset.menos, -1));
+  const bp = $('#ver-pedido'); if (bp) bp.onclick = verPedido;
+}
+function pieles(p) { return (p.pieles || []).map(k => `<li>${PIELES[k] || esc(k)}</li>`).join(''); }
+function tarjeta(p) {
+  const n = carrito[p.id] || 0;
+  return `<article class="jab">
+    <button class="jab-foto" data-ver="${p.id}" aria-label="Ver detalles de ${esc(p.nombre)}">${fotoHTML(p)}
+      ${p.agotado ? '<span class="sello agotado">Agotado</span>' : p.ejemplo ? '<span class="sello">Ejemplo</span>' : ''}</button>
+    <div class="jab-info">
+      <h3>${esc(p.nombre)}</h3>
+      <p class="jab-desc">${esc(p.descripcion)}</p>
+      <ul class="pieles" aria-label="Tipos de piel">${pieles(p)}</ul>
+      <div class="jab-pie">
+        <div><span class="precio num">${din(p.precio)}</span>${p.peso ? `<span class="peso">${esc(p.peso)} g</span>` : ''}</div>
+        ${p.agotado ? '<span class="muted small">Sin existencias</span>' : n
+          ? `<div class="paso"><button data-menos="${p.id}" aria-label="Quitar uno">−</button><span class="num">${n}</span><button data-mas="${p.id}" aria-label="Agregar uno">+</button></div>`
+          : `<button class="btn chico pri" data-mas="${p.id}">Agregar</button>`}
+      </div>
+    </div></article>`;
+}
+function itemsCarrito() {
+  return Object.entries(carrito).map(([id, n]) => ({p: prod(id), n})).filter(x => x.p && x.n > 0 && !x.p.agotado && x.p.visible !== false);
+}
+function barraPedido() {
+  const it = itemsCarrito(); if (!it.length) return '';
+  const cant = it.reduce((s, x) => s + x.n, 0), tot = it.reduce((s, x) => s + x.n * x.p.precio, 0);
+  return `<div class="barra-pedido"><button class="btn pri" id="ver-pedido">Ver mi pedido · ${cant} ${cant === 1 ? 'jabón' : 'jabones'} · <span class="num">${din(tot)}</span></button></div>`;
+}
+function cambiarCarrito(id, d) {
+  carrito[id] = Math.max(0, (carrito[id] || 0) + d);
+  if (!carrito[id]) delete carrito[id];
+  guardarLocal('jab_carrito', carrito);
+  renderTienda();
+  if ($('#dlg').open && $('#dlg [data-pedido]')) verPedido();
+}
+function verDetalle(id) {
+  const p = prod(id); if (!p) return;
+  const bloque = (t, v) => v ? `<div class="det-bloque"><h4>${t}</h4><p>${esc(v)}</p></div>` : '';
+  abrir(`<div class="dlg">
+    <div class="dlg-cab"><h2>${esc(p.nombre)}</h2><button class="cerrar" data-cerrar aria-label="Cerrar">×</button></div>
+    <div class="dlg-cuerpo">
+      <div class="det-foto">${fotoHTML(p)}</div>
+      <ul class="pieles">${pieles(p)}</ul>
+      ${bloque('Qué es', p.descripcion)}${bloque('Ingredientes', p.ingredientes)}${bloque('Cómo usarlo', p.uso)}
+      <div class="det-bloque"><h4>Precio</h4><p class="num"><b>${din(p.precio)}</b>${p.peso ? ` · ${esc(p.peso)} g` : ''}</p></div>
+    </div>
+    <div class="dlg-pie">${p.agotado ? '<span class="muted">Agotado por ahora</span>' : `<button class="btn pri" id="det-add">Agregar al pedido</button>`}</div></div>`,
+    d => { const b = $('#det-add', d); if (b) b.onclick = () => { cambiarCarrito(p.id, 1); d.close(); toast(p.nombre + ' agregado'); }; });
+}
+function mensajePedido(nombre, nota) {
+  const it = itemsCarrito(), tot = it.reduce((s, x) => s + x.n * x.p.precio, 0);
+  return [D.config.intro || 'Hola, quiero hacer este pedido:', '',
+    ...it.map(x => `• ${x.n} × ${x.p.nombre} — ${din(x.n * x.p.precio)}`), '',
+    `Total: ${din(tot)}`,
+    nombre ? `Nombre: ${nombre}` : '', nota ? `Nota: ${nota}` : ''].filter((l, i, a) => l || a[i - 1]).join('\n').trim();
+}
+function verPedido() {
+  const it = itemsCarrito();
+  if (!it.length) { $('#dlg').close(); return; }
+  const tot = it.reduce((s, x) => s + x.n * x.p.precio, 0);
+  const num = (D.config.whatsapp || '').replace(/\D/g, '');
+  const prev = {nombre: leerLocal('jab_nombre', ''), nota: $('#ped-nota')?.value || ''};
+  abrir(`<div class="dlg" data-pedido>
+    <div class="dlg-cab"><h2>Tu pedido</h2><button class="cerrar" data-cerrar aria-label="Cerrar">×</button></div>
+    <div class="dlg-cuerpo">
+      <div>${it.map(x => `<div class="linea-ped"><div><b>${esc(x.p.nombre)}</b><div class="muted small num">${din(x.p.precio)} c/u</div></div>
+        <div class="paso"><button data-menos="${x.p.id}" aria-label="Quitar uno">−</button><span class="num">${x.n}</span><button data-mas="${x.p.id}" aria-label="Agregar uno">+</button></div>
+        <b class="num">${din(x.n * x.p.precio)}</b></div>`).join('')}</div>
+      <div class="total-ped"><span>Total</span><span class="num">${din(tot)}</span></div>
+      <label class="campo"><span>Tu nombre</span><input id="ped-nombre" autocomplete="name" value="${esc(prev.nombre)}" placeholder="Para saber quién pide"></label>
+      <label class="campo"><span>Nota (opcional)</span><input id="ped-nota" value="${esc(prev.nota)}" placeholder="Entrega, dirección, horario…"></label>
+      ${num ? `<p class="wa-num">El pedido se abre en WhatsApp con el número <b class="num">+${esc(num)}</b>. Solo tienes que enviarlo.</p>` : ''}
+    </div>
+    <div class="dlg-pie">
+      <button class="btn" id="ped-copiar">Copiar pedido</button>
+      ${num ? `<a class="btn pri" id="ped-wa" target="_blank" rel="noopener" href="#">Enviar por WhatsApp</a>` : '<span class="muted small">El número de WhatsApp aún no está configurado.</span>'}
+    </div></div>`, d => {
+    const actual = () => mensajePedido($('#ped-nombre', d).value.trim(), $('#ped-nota', d).value.trim());
+    const wa = $('#ped-wa', d);
+    const act = () => { if (wa) wa.href = `https://wa.me/${num}?text=${encodeURIComponent(actual())}`; guardarLocal('jab_nombre', $('#ped-nombre', d).value); };
+    $('#ped-nombre', d).oninput = act; $('#ped-nota', d).oninput = act; act();
+    $$('[data-mas]', d).forEach(b => b.onclick = () => cambiarCarrito(b.dataset.mas, 1));
+    $$('[data-menos]', d).forEach(b => b.onclick = () => cambiarCarrito(b.dataset.menos, -1));
+    $('#ped-copiar', d).onclick = () => copiarTexto(actual(), 'Pedido copiado');
+  });
+}
+cargar();
+</script>
+</body>
+</html>

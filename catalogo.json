@@ -1,0 +1,68 @@
+{
+  "config": {
+    "nombre": "Jabones Artesanales",
+    "slogan": "Jabones hechos a mano en pequeños lotes, con aceites vegetales y sin perfumes sintéticos.",
+    "whatsapp": "",
+    "moneda": "$",
+    "intro": "Hola, quiero hacer este pedido:"
+  },
+  "productos": [
+    {
+      "id": "ej1",
+      "ejemplo": true,
+      "nombre": "Avena y miel",
+      "descripcion": "Limpieza suave que calma la piel irritada y la deja hidratada. Ideal para uso diario en cara y cuerpo.",
+      "pieles": [
+        "seca",
+        "sensible",
+        "normal"
+      ],
+      "ingredientes": "Aceite de oliva, aceite de coco, manteca de karité, avena coloidal, miel de abeja.",
+      "uso": "Humedece el jabón, haz espuma entre las manos y masajea la piel. Enjuaga con agua tibia. Guárdalo en una jabonera que escurra.",
+      "peso": 100,
+      "precio": 4.5,
+      "color": "#cfb383",
+      "foto": "",
+      "visible": true,
+      "agotado": false
+    },
+    {
+      "id": "ej2",
+      "ejemplo": true,
+      "nombre": "Carbón activado y árbol de té",
+      "descripcion": "Absorbe el exceso de grasa y ayuda a limpiar los poros. Su aceite de árbol de té ayuda a prevenir brotes.",
+      "pieles": [
+        "grasa",
+        "mixta",
+        "acne"
+      ],
+      "ingredientes": "Aceite de oliva, aceite de coco, aceite de ricino, carbón activado, aceite esencial de árbol de té.",
+      "uso": "Úsalo en la noche sobre la piel húmeda, masajea 30 segundos y enjuaga. Si tu piel es sensible, úsalo días alternos.",
+      "peso": 100,
+      "precio": 5,
+      "color": "#3c4240",
+      "foto": "",
+      "visible": true,
+      "agotado": false
+    },
+    {
+      "id": "ej3",
+      "ejemplo": true,
+      "nombre": "Rosa mosqueta y arcilla rosa",
+      "descripcion": "Regenera y aporta luminosidad. La arcilla rosa limpia sin resecar y la rosa mosqueta nutre la piel madura.",
+      "pieles": [
+        "madura",
+        "normal",
+        "seca"
+      ],
+      "ingredientes": "Aceite de oliva, manteca de cacao, aceite de rosa mosqueta, arcilla rosa, aceite esencial de geranio.",
+      "uso": "Aplica en rostro y cuello mañana y noche. Enjuaga y continúa con tu crema habitual.",
+      "peso": 90,
+      "precio": 5.5,
+      "color": "#d49e9b",
+      "foto": "",
+      "visible": true,
+      "agotado": false
+    }
+  ]
+}
