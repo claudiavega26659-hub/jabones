@@ -14,7 +14,7 @@
 <div id="admin"><p class="cargando">Cargando…</p></div>
 <dialog id="dlg"></dialog>
 <div id="toast" class="toast" hidden></div>
-<div id="velo" class="velo" hidden>Guardando en GitHub…</div>
+<div id="velo" class="velo" hidden>Guardando…</div>
 
 <script src="comun.js"></script>
 <script>
@@ -24,8 +24,39 @@ const PAGOS = ['Efectivo','Transferencia','Tarjeta','Otro'];
 const UNIDADES = {g:['g',1,'g'], kg:['kg',1000,'g'], ml:['ml',1,'ml'], L:['L',1000,'ml'], oz:['oz',28.35,'g'], u:['unidad',1,'u']};
 const VACIO_DATOS = () => ({ventas:[], produccion:[], compras:[]});
 
-let CFG = leerLocal('jab_github', null);
-let D = {config:{nombre:'Jabones Artesanales', slogan:'', whatsapp:'', moneda:'$', intro:'Hola, quiero hacer este pedido:'}, productos:[]}, catSha = null;
+/* Acceso con contraseña. La conexión (usuario, repositorios y clave de GitHub) se guarda cifrada en el navegador
+   con una llave aleatoria; esa llave se guarda envuelta una vez por cada contraseña (administradora y dueña). */
+let ACCESO = leerLocal('jab_acceso', null);   // {datos:{iv,data}, llaves:{admin:{salt,iv,data}, duena:{salt,iv,data}}}
+let LLAVE = null, CFG = null, ROL = null;      // solo en memoria mientras la sesión está abierta
+const ROLES = {admin:'Administradora', duena:'Dueña'};
+const enc = new TextEncoder(), dec = new TextDecoder();
+const aB64u8 = u8 => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
+const deB64u8 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const azar = n => crypto.getRandomValues(new Uint8Array(n));
+async function claveDe(pass, salt) {
+  const base = await crypto.subtle.importKey('raw', enc.encode(pass), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2', salt, iterations:250000, hash:'SHA-256'}, base, {name:'AES-GCM', length:256}, false, ['encrypt', 'decrypt']);
+}
+const importarLlave = raw => crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
+async function aesCifrar(key, bytes) { const iv = azar(12); return {iv:aB64u8(iv), data:aB64u8(new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM', iv}, key, bytes)))}; }
+async function aesDescifrar(key, b) { return new Uint8Array(await crypto.subtle.decrypt({name:'AES-GCM', iv:deB64u8(b.iv)}, key, deB64u8(b.data))); }
+async function envolverLlave(pass) { const salt = azar(16); return {salt:aB64u8(salt), ...(await aesCifrar(await claveDe(pass, salt), LLAVE))}; }
+async function desenvolverLlave(pass, w) { try { return await aesDescifrar(await claveDe(pass, deB64u8(w.salt)), w); } catch { return null; } }
+async function guardarAcceso() {
+  ACCESO.datos = await aesCifrar(await importarLlave(LLAVE), enc.encode(JSON.stringify(CFG)));
+  guardarLocal('jab_acceso', ACCESO); borrarLocal('jab_github');
+}
+async function entrar(pass) {
+  for (const rol of ['admin', 'duena']) {
+    const w = ACCESO.llaves[rol]; if (!w) continue;
+    const raw = await desenvolverLlave(pass, w);
+    if (raw) { LLAVE = raw; CFG = JSON.parse(dec.decode(await aesDescifrar(await importarLlave(raw), ACCESO.datos))); ROL = rol; return true; }
+  }
+  return false;
+}
+function salir() { LLAVE = CFG = ROL = null; D = {config:{}, productos:[]}; DATOS = VACIO_DATOS(); inicio(); }
+const fotosRecientes = {};                     // fotos recién subidas, mientras la página pública se actualiza
+let D ={config:{nombre:'Jabones Artesanales', slogan:'', whatsapp:'', moneda:'$', intro:'Hola, quiero hacer este pedido:'}, productos:[]}, catSha = null;
 let DATOS = VACIO_DATOS(), datSha = null, ultimaSinc = null;
 let tab = leerLocal('jab_tab', 'resumen'), mesSel = hoy().slice(0, 7);
 
@@ -75,23 +106,22 @@ async function borrarArchivo(repo, ruta, mensaje) {
 }
 function errorGitHub(e) {
   if (!navigator.onLine) return 'No hay conexión a internet.';
+  if (ROL !== 'admin' && [401, 403, 404].includes(e.status)) return `No se pudo conectar con el almacenamiento (código ${e.status}). Avisa a tu administradora.`;
   if (e.status === 401) return 'La clave de GitHub no es válida o ya venció. Crea una nueva en Ajustes.';
   if (e.status === 403) return 'La clave no tiene permiso para escribir en el repositorio (o GitHub limitó las solicitudes). Revisa los permisos de la clave.';
   if (e.status === 404) return 'No se encontró el repositorio. Revisa el usuario y los nombres en Ajustes, y que la clave tenga acceso a ambos.';
   if (e.status === 409) return 'Los datos cambiaron desde otro dispositivo. Toca Actualizar y repite el cambio.';
-  return 'GitHub respondió con un error' + (e.detalle ? ': ' + e.detalle : '.') ;
+  return 'No se pudo guardar: el almacenamiento respondió con un error' + (e.detalle ? ': ' + e.detalle : '.') ;
 }
-const linkTienda = () => CFG ? (CFG.pub.toLowerCase() === CFG.owner.toLowerCase() + '.github.io'
-  ? `https://${CFG.pub.toLowerCase()}/` : `https://${CFG.owner.toLowerCase()}.github.io/${CFG.pub}/`) : '';
+/* El catálogo vive en la misma dirección que este panel (sea github.io o el dominio propio) */
+const linkTienda = () => location.origin + location.pathname.replace(/admin(\.html)?$/, '');
 function fotoSrc(p) {
-  if (p._preview) return p._preview;
   if (!p.foto) return '';
-  if (/^(data:|https?:)/.test(p.foto)) return p.foto;
-  return `https://raw.githubusercontent.com/${CFG.owner}/${CFG.pub}/${CFG.rama}/${p.foto}`;
+  return fotosRecientes[p.foto] || p.foto;
 }
 
 async function cargarTodo() {
-  $('#admin').innerHTML = '<p class="cargando">Cargando datos desde GitHub…</p>';
+  $('#admin').innerHTML = '<p class="cargando">Cargando datos…</p>';
   try {
     const [cat, dat] = await Promise.all([leerArchivo(CFG.pub, 'catalogo.json'), leerArchivo(CFG.priv, 'datos.json')]);
     if (cat.txt) D = JSON.parse(cat.txt);
@@ -103,9 +133,10 @@ async function cargarTodo() {
     renderAdmin();
   } catch (e) {
     $('#admin').innerHTML = `<div class="wrap"><div class="vacio" style="margin-top:40px"><h3>No se pudieron cargar los datos</h3><p>${esc(errorGitHub(e))}</p>
-      <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="btn pri" id="reint">Reintentar</button><button class="btn" id="a-cfg">Revisar ajustes de GitHub</button></div></div></div>`;
+      <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="btn pri" id="reint">Reintentar</button>${ROL === 'admin' ? '<button class="btn" id="a-cfg">Revisar la conexión</button>' : ''}<button class="btn" id="a-salir">Salir</button></div></div></div>`;
     $('#reint').onclick = cargarTodo;
-    $('#a-cfg').onclick = () => pantallaConexion();
+    $('#a-salir').onclick = salir;
+    const a = $('#a-cfg'); if (a) a.onclick = () => pantallaConexion();
   }
 }
 /* Guarda el catálogo público (catalogo.json en el repositorio público) */
@@ -138,46 +169,111 @@ async function cambiarDatos(fn, mensaje) {
 const guardarReg = (col, obj, msg) => cambiarDatos(d => { const i = d[col].findIndex(x => x.id === obj.id); if (i >= 0) d[col][i] = obj; else d[col].push(obj); }, msg);
 const borrarReg = (col, id, msg) => cambiarDatos(d => { d[col] = d[col].filter(x => x.id !== id); }, msg).then(ok => ok && toast('Registro eliminado'));
 
-/* ======================= Pantalla de conexión ======================= */
+/* ======================= Entrada y configuración ======================= */
+function inicio() {
+  if (ACCESO && ACCESO.llaves) return pantallaEntrar();
+  pantallaSinConfigurar();
+}
+async function nombreNegocio() {
+  try { const r = await fetch('catalogo.json?v=' + Date.now(), {cache:'no-store'}); const c = await r.json(); MONEDA = c.config.moneda || '$'; return c.config.nombre || ''; } catch { return ''; }
+}
+function marcoAcceso(titulo, cuerpo) {
+  return `<main class="wrap seccion" style="max-width:440px;padding-top:12vh">
+    <div class="marca"><div class="marca-sello" aria-hidden="true" id="m-sello">J</div><h1 id="m-nombre" style="font-size:26px">Panel</h1></div>
+    <section class="panel" style="display:flex;flex-direction:column;gap:14px"><h3 style="margin:0">${titulo}</h3>${cuerpo}</section></main>`;
+}
+async function pintarNombre() { const n = await nombreNegocio(); if (n && $('#m-nombre')) { $('#m-nombre').textContent = n; $('#m-sello').textContent = n[0]; document.title = 'Panel · ' + n; } }
+function pantallaEntrar() {
+  $('#admin').innerHTML = marcoAcceso('Entrar al panel', `
+    <form id="f-ent" style="display:flex;flex-direction:column;gap:14px">
+      <label class="campo"><span>Contraseña</span><input id="e-pass" type="password" required autocomplete="current-password" autofocus></label>
+      <button class="btn pri">Entrar</button>
+      <p class="ayuda" id="e-msg" aria-live="polite" style="margin:0"></p>
+    </form>
+    <p class="ayuda" style="margin:0">¿Olvidaste la contraseña? Pídele a tu administradora que la cambie.</p>`);
+  pintarNombre();
+  $('#f-ent').onsubmit = async e => {
+    e.preventDefault();
+    const msg = $('#e-msg'), b = $('#f-ent button'); msg.textContent = 'Revisando…'; b.disabled = true;
+    if (await entrar($('#e-pass').value)) { cargarTodo(); return; }
+    b.disabled = false; msg.textContent = 'Contraseña incorrecta.'; $('#e-pass').select();
+  };
+}
+function pantallaSinConfigurar() {
+  $('#admin').innerHTML = marcoAcceso('Este dispositivo todavía no está configurado', `
+    <p style="margin:0">Pídele a tu administradora que lo configure. Después solo necesitarás tu contraseña para entrar.</p>
+    <button class="btn" id="s-conf" style="align-self:flex-start">Soy la administradora: configurar</button>`);
+  pintarNombre();
+  $('#s-conf').onclick = () => pantallaConexion();
+}
+/* Solo la administradora: conexión con GitHub y contraseñas */
 function pantallaConexion() {
-  const c = CFG || {owner:'', pub:'jabones', priv:'jabones-datos', rama:'main', token:''};
+  const previo = leerLocal('jab_github', null);   // versión anterior del panel, sin contraseña
+  const editando = ROL === 'admin';
+  const c = CFG || previo || {owner:'', pub:'jabones', priv:'jabones-datos', rama:'main', token:''};
+  const opcional = editando ? ' (déjala vacía para no cambiarla)' : '';
   $('#admin').innerHTML = `<main class="wrap seccion" style="max-width:680px">
-    <div class="sec-cab"><h2>Conectar con GitHub</h2>${CFG ? '<button class="btn" id="c-volver">Volver</button>' : ''}</div>
-    <p class="muted" style="margin:0">El catálogo se guarda en tu repositorio público y las ventas, compras y producción en tu repositorio privado. Esta información se guarda solo en este navegador.</p>
+    <div class="sec-cab"><h2>Conexión y contraseñas</h2><button class="btn" id="c-volver">${editando ? 'Volver' : 'Cancelar'}</button></div>
+    <p class="muted" style="margin:0">Solo la administradora ve esta pantalla. Los datos de GitHub se guardan cifrados en este navegador; la dueña entra solo con su contraseña y nunca los ve.</p>
+    ${previo && !editando ? '<div class="aviso">Ahora el panel usa contraseñas. Crea la tuya y la de la dueña para seguir.</div>' : ''}
     <form class="panel" id="f-con" style="display:flex;flex-direction:column;gap:14px">
-      <label class="campo"><span>Usuario de GitHub</span><input id="c-owner" required autocomplete="username" value="${esc(c.owner)}" placeholder="mi-usuario"></label>
+      <h3 style="margin:0">Conexión con GitHub</h3>
+      <label class="campo"><span>Usuario u organización de GitHub</span><input id="c-owner" required autocomplete="off" value="${esc(c.owner)}" placeholder="mi-usuario"></label>
       <div class="fila">
         <label class="campo"><span>Repositorio público (la página)</span><input id="c-pub" required value="${esc(c.pub)}"></label>
         <label class="campo"><span>Repositorio privado (los datos)</span><input id="c-priv" required value="${esc(c.priv)}"></label>
         <label class="campo"><span>Rama</span><input id="c-rama" required value="${esc(c.rama)}"></label></div>
       <label class="campo"><span>Clave de acceso (token)</span><input id="c-token" type="password" required autocomplete="off" value="${esc(c.token)}" placeholder="github_pat_…">
-        <span class="ayuda">Un token "fine-grained" con acceso solo a esos dos repositorios y permiso <b>Contents: Read and write</b>. No lo compartas con nadie.</span></label>
+        <span class="ayuda">Un token "fine-grained" con acceso solo a esos dos repositorios y permiso <b>Contents: Read and write</b>.</span></label>
+      <h3 style="margin:6px 0 0">Contraseñas del panel</h3>
+      <div class="fila">
+        <label class="campo"><span>Contraseña de administradora${opcional}</span><input id="c-pa" type="password" autocomplete="new-password" ${editando ? '' : 'required'}></label>
+        <label class="campo"><span>Repítela</span><input id="c-pa2" type="password" autocomplete="new-password"></label></div>
+      <div class="fila">
+        <label class="campo"><span>Contraseña de la dueña${opcional}</span><input id="c-pd" type="password" autocomplete="new-password" ${editando ? '' : 'required'}></label>
+        <label class="campo"><span>Repítela</span><input id="c-pd2" type="password" autocomplete="new-password"></label></div>
+      <span class="ayuda">Mínimo 8 caracteres. Deben ser distintas: la contraseña decide si se entra como administradora o como dueña.</span>
       <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri">Probar y guardar</button>
-        ${CFG ? '<button type="button" class="btn peligro" id="c-salir">Desconectar este dispositivo</button>' : ''}</div>
+        ${editando ? '<button type="button" class="btn peligro" id="c-borrar">Borrar el acceso de este dispositivo</button>' : ''}</div>
       <p class="ayuda" id="c-msg" aria-live="polite"></p>
     </form>
-    <details class="panel"><summary style="cursor:pointer;font-weight:600">Cómo crear la clave de acceso</summary>
+    <details class="panel"><summary style="cursor:pointer;font-weight:600">Cómo crear la clave de acceso de GitHub</summary>
       <ol class="pasos" style="margin-top:10px">
-        <li>En GitHub, entra a tu foto → <b>Settings</b> → <b>Developer settings</b> → <b>Personal access tokens</b> → <b>Fine-grained tokens</b> → <b>Generate new token</b>.</li>
+        <li>Abre <b>github.com/settings/personal-access-tokens/new</b>.</li>
         <li>Ponle un nombre (por ejemplo "Panel de jabones") y elige la fecha de vencimiento más lejana que te permita.</li>
         <li>En <b>Repository access</b> elige <b>Only select repositories</b> y marca los dos repositorios.</li>
         <li>En <b>Permissions → Repository permissions</b>, busca <b>Contents</b> y elige <b>Read and write</b>.</li>
         <li>Toca <b>Generate token</b>, cópialo y pégalo aquí. GitHub solo lo muestra una vez.</li>
       </ol></details></main>`;
-  const v = $('#c-volver'); if (v) v.onclick = renderAdmin;
-  const s = $('#c-salir'); if (s) s.onclick = () => { borrarLocal('jab_github'); CFG = null; pantallaConexion(); };
+  $('#c-volver').onclick = () => editando ? renderAdmin() : inicio();
+  const bo = $('#c-borrar');
+  if (bo) bo.onclick = () => confirmar('Borrar el acceso de este dispositivo', 'Se borrarán la conexión y las contraseñas guardadas en este navegador. Los datos del negocio no se tocan. Para volver a entrar habrá que configurarlo de nuevo.', 'Borrar acceso',
+    () => { borrarLocal('jab_acceso'); borrarLocal('jab_github'); ACCESO = null; salir(); });
   $('#f-con').onsubmit = async e => {
     e.preventDefault();
+    const msg = $('#c-msg');
+    const pa = $('#c-pa').value, pd = $('#c-pd').value;
+    if (pa !== $('#c-pa2').value) { msg.textContent = 'Las dos contraseñas de administradora no coinciden.'; return; }
+    if (pd !== $('#c-pd2').value) { msg.textContent = 'Las dos contraseñas de la dueña no coinciden.'; return; }
+    if ((pa && pa.length < 8) || (pd && pd.length < 8)) { msg.textContent = 'Las contraseñas deben tener al menos 8 caracteres.'; return; }
+    if (pa && pd && pa === pd) { msg.textContent = 'Las contraseñas de administradora y de la dueña deben ser distintas.'; return; }
     const nuevo = {owner:$('#c-owner').value.trim(), pub:$('#c-pub').value.trim(), priv:$('#c-priv').value.trim(), rama:$('#c-rama').value.trim() || 'main', token:$('#c-token').value.trim()};
-    const msg = $('#c-msg'); msg.textContent = 'Probando la conexión…';
+    msg.textContent = 'Probando la conexión…';
     try {
       for (const repo of [nuevo.pub, nuevo.priv]) {
         const r = await gh(`/repos/${encodeURIComponent(nuevo.owner)}/${encodeURIComponent(repo)}`, {}, nuevo);
-        if (repo === nuevo.priv && !r.private) { msg.textContent = `El repositorio ${repo} es público: cualquiera vería tus ventas. Cámbialo a privado en GitHub (Settings → General → Danger Zone → Change visibility).`; return; }
+        if (repo === nuevo.priv && !r.private) { msg.textContent = `El repositorio ${repo} es público: cualquiera vería las ventas. Cámbialo a privado en GitHub (Settings → General → Danger Zone → Change visibility).`; return; }
         if (r.permissions && !r.permissions.push) { msg.textContent = `La clave no puede escribir en ${repo}. Dale permiso Contents: Read and write.`; return; }
       }
-      CFG = nuevo; guardarLocal('jab_github', CFG); cargarTodo();
-    } catch (err) { msg.textContent = errorGitHub(err); }
+    } catch (err) { msg.textContent = errorGitHub(err); return; }
+    msg.textContent = 'Guardando…';
+    if (!editando) { LLAVE = azar(32); ACCESO = {llaves:{}}; ROL = 'admin'; }
+    CFG = nuevo;
+    if (pa) ACCESO.llaves.admin = await envolverLlave(pa);
+    if (pd) ACCESO.llaves.duena = await envolverLlave(pd);
+    await guardarAcceso();
+    toast(editando ? 'Cambios guardados' : 'Listo. Desde ahora se entra con contraseña.');
+    cargarTodo();
   };
 }
 
@@ -205,16 +301,18 @@ const fmtCant = (n, base) => (Math.round(n * 100) / 100).toLocaleString('es') + 
 
 /* ======================= Interfaz ======================= */
 function renderAdmin() {
-  if (!CFG) return pantallaConexion();
+  if (!CFG) return inicio();
   const tabs = {resumen:'Resumen', catalogo:'Catálogo', ventas:'Ventas', produccion:'Producción', compras:'Compras', ajustes:'Ajustes'};
   $('#admin').innerHTML = `<div class="adm-top"><div class="wrap">
-      <h1><span class="etq">Administración</span>${esc(D.config.nombre)}</h1>
+      <h1><span class="etq">${ROLES[ROL] || 'Administración'}</span>${esc(D.config.nombre)}</h1>
       <span class="sinc" id="sinc"></span>
       <button class="btn chico" id="a-act">Actualizar</button>
-      <a class="btn chico" href="index.html" target="_blank" rel="noopener">Ver catálogo</a></div>
+      <a class="btn chico" href="${esc(linkTienda())}" target="_blank" rel="noopener">Ver catálogo</a>
+      <button class="btn chico plano" id="a-salir">Salir</button></div>
       <div class="wrap"><nav class="pestanas" role="tablist">${Object.entries(tabs).map(([k, v]) => `<button role="tab" data-tab="${k}" aria-selected="${tab === k}">${v}</button>`).join('')}</nav></div></div>
     <main class="wrap seccion" id="sec"></main>`;
   $('#a-act').onclick = cargarTodo;
+  $('#a-salir').onclick = salir;
   $$('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; guardarLocal('jab_tab', tab); renderAdmin(); });
   renderSeccion();
 }
@@ -347,7 +445,7 @@ function editarProducto(id) {
       if (fotoNueva) {
         $('#velo').hidden = false;
         try { const ruta = `fotos/${p.id}-${Date.now().toString(36)}.jpg`;
-          await escribirArchivo(CFG.pub, ruta, fotoNueva.split(',')[1], null, 'Foto de ' + p.nombre); p.foto = ruta; }
+          await escribirArchivo(CFG.pub, ruta, fotoNueva.split(',')[1], null, 'Foto de ' + p.nombre); fotosRecientes[ruta] = fotoNueva; p.foto = ruta; }
         catch (err) { $('#velo').hidden = true; toast('No se pudo subir la foto. ' + errorGitHub(err)); return; }
       }
       const n = structuredClone(D); const i = n.productos.findIndex(x => x.id === p.id);
@@ -566,7 +664,7 @@ function secAjustes(s) {
   s.innerHTML = `<div class="sec-cab"><h2>Ajustes</h2></div>
     <section class="panel" style="max-width:620px;display:flex;flex-direction:column;gap:10px"><h3 style="margin:0">Link del catálogo</h3>
       <div class="enlace-copia"><code>${esc(link)}</code><button class="btn chico" id="a-copiar">Copiar link</button></div>
-      <p class="ayuda" style="margin:0">Compártelo por WhatsApp, Instagram o Facebook. Quien lo abra solo ve el catálogo; tus ventas y compras están en el repositorio privado.</p></section>
+      <p class="ayuda" style="margin:0">Compártelo por WhatsApp, Instagram o Facebook. Quien lo abra solo ve el catálogo; tus ventas, compras y producción son privadas.</p></section>
     <form class="panel" id="f-aj" style="display:flex;flex-direction:column;gap:14px;max-width:620px">
       <h3 style="margin:0">Datos del negocio</h3>
       <label class="campo"><span>Nombre del negocio</span><input id="a-nombre" required value="${esc(c.nombre)}"></label>
@@ -577,11 +675,12 @@ function secAjustes(s) {
       <label class="campo"><span>Saludo del pedido</span><input id="a-intro" value="${esc(c.intro)}"><span class="ayuda">Primera línea del mensaje que recibes por WhatsApp.</span></label>
       <div><button class="btn pri">Guardar</button></div>
     </form>
-    <section class="panel" style="max-width:620px;display:flex;flex-direction:column;gap:10px"><h3 style="margin:0">Respaldo y conexión</h3>
-      <p class="ayuda" style="margin:0">GitHub guarda el historial de cada cambio. Además puedes descargar una copia de tus datos.</p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="a-resp">Descargar respaldo</button><button class="btn" id="a-gh">Conexión con GitHub</button></div></section>`;
+    <section class="panel" style="max-width:620px;display:flex;flex-direction:column;gap:10px"><h3 style="margin:0">Respaldo</h3>
+      <p class="ayuda" style="margin:0">Cada cambio queda guardado con su historial. Además puedes descargar una copia de tus datos cuando quieras.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="a-resp">Descargar respaldo</button>
+        ${ROL === 'admin' ? '<button class="btn" id="a-gh">Conexión y contraseñas</button>' : ''}</div></section>`;
   $('#a-copiar').onclick = () => copiarTexto(link, 'Link copiado');
-  $('#a-gh').onclick = pantallaConexion;
+  const bg = $('#a-gh'); if (bg) bg.onclick = pantallaConexion;
   $('#a-resp').onclick = () => {
     const blob = new Blob([JSON.stringify({catalogo:D, datos:DATOS, fecha:new Date().toISOString()}, null, 2)], {type:'application/json'});
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `respaldo-jabones-${hoy()}.json`; a.click();
@@ -597,7 +696,7 @@ function secAjustes(s) {
 }
 
 /* ======================= Arranque ======================= */
-if (CFG) cargarTodo(); else pantallaConexion();
+inicio();
 </script>
 </body>
 </html>
