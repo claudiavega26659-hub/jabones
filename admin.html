@@ -4,7 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex">
-<title>Administración · Jabones</title>
+<meta name="theme-color" content="#3d6a4b">
+<title>Jabones</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icono-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Young+Serif&family=Figtree:wght@400;500;600;700&display=swap">
@@ -14,7 +17,6 @@
 <div id="admin"><p class="cargando">Cargando…</p></div>
 <dialog id="dlg"></dialog>
 <div id="toast" class="toast" hidden></div>
-<div id="velo" class="velo" hidden>Guardando…</div>
 
 <script src="comun.js"></script>
 <script>
@@ -54,10 +56,10 @@ async function entrar(pass) {
   }
   return false;
 }
-function salir() { LLAVE = CFG = ROL = null; D = {config:{}, productos:[]}; DATOS = VACIO_DATOS(); inicio(); }
-const fotosRecientes = {};                     // fotos recién subidas, mientras la página pública se actualiza
-let D ={config:{nombre:'Jabones Artesanales', slogan:'', whatsapp:'', moneda:'$', intro:'Hola, quiero hacer este pedido:'}, productos:[]}, catSha = null;
-let DATOS = VACIO_DATOS(), datSha = null, ultimaSinc = null;
+function salir() { LLAVE = CFG = ROL = null; D = catalogoVacio(); DATOS = VACIO_DATOS(); COLA = []; inicio(); }
+const catalogoVacio = () => ({config:{nombre:'Jabones Artesanales', slogan:'', whatsapp:'', moneda:'$', intro:'Hola, quiero hacer este pedido:'}, productos:[]});
+/* Copia de trabajo en el celular: catálogo, datos, cambios pendientes de subir (COLA) y fotos guardadas */
+let D = catalogoVacio(), DATOS = VACIO_DATOS(), COLA = [], FOTOS = {}, ultimaSinc = null;
 let tab = leerLocal('jab_tab', 'resumen'), mesSel = hoy().slice(0, 7);
 
 function aB64(txt) {
@@ -115,60 +117,150 @@ function errorGitHub(e) {
 }
 /* El catálogo vive en la misma dirección que este panel (sea github.io o el dominio propio) */
 const linkTienda = () => location.origin + location.pathname.replace(/admin(\.html)?$/, '');
+/* Foto: la recién tomada (aún sin subir), la guardada en el celular o la publicada */
 function fotoSrc(p) {
+  if (p.fotoNueva) return p.fotoNueva;
   if (!p.foto) return '';
-  return fotosRecientes[p.foto] || p.foto;
+  return FOTOS[p.foto] || p.foto;
 }
 
-async function cargarTodo() {
-  $('#admin').innerHTML = '<p class="cargando">Cargando datos…</p>';
+/* ======================= Memoria del celular (IndexedDB) ======================= */
+const idb = (() => {
+  let abierta;
+  const abrir = () => abierta ||= new Promise((ok, mal) => {
+    const r = indexedDB.open('jabones', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('kv');
+    r.onsuccess = () => ok(r.result); r.onerror = () => mal(r.error);
+  });
+  const op = async (modo, fn) => {
+    const db = await abrir();
+    return new Promise((ok, mal) => { const t = db.transaction('kv', modo), req = fn(t.objectStore('kv')); t.oncomplete = () => ok(req.result); t.onerror = () => mal(t.error); });
+  };
+  return {get:k => op('readonly', s => s.get(k)), set:(k, v) => op('readwrite', s => s.put(v, k)), del:k => op('readwrite', s => s.delete(k))};
+})();
+const persistir = () => idb.set('estado', {catalogo:D, datos:DATOS, cola:COLA, fotos:FOTOS, ultimaSinc}).catch(() => toast('No se pudo guardar en la memoria del celular.'));
+async function cargarLocal() {
+  try { const e = await idb.get('estado'); if (!e) return false;
+    D = e.catalogo; DATOS = {...VACIO_DATOS(), ...e.datos}; COLA = e.cola || []; FOTOS = e.fotos || {}; ultimaSinc = e.ultimaSinc || null; MONEDA = D.config.moneda || '$'; return true;
+  } catch { return false; }
+}
+
+/* ======================= Cambios: se aplican al momento y se suben después ======================= */
+function aplicarOp(cat, dat, op) {
+  if (op.t === 'prod') { const i = cat.productos.findIndex(x => x.id === op.p.id); if (i >= 0) cat.productos[i] = structuredClone(op.p); else cat.productos.push(structuredClone(op.p)); }
+  else if (op.t === 'prodBorrar') cat.productos = cat.productos.filter(x => x.id !== op.id);
+  else if (op.t === 'config') cat.config = {...op.config};
+  else if (op.t === 'reg') { const l = dat[op.col]; const i = l.findIndex(x => x.id === op.obj.id); if (i >= 0) l[i] = op.obj; else l.push(op.obj); }
+  else if (op.t === 'regBorrar') dat[op.col] = dat[op.col].filter(x => x.id !== op.id);
+}
+const esCatalogo = op => op.t === 'prod' || op.t === 'prodBorrar' || op.t === 'config';
+async function cambiar(op, aviso) {
+  aplicarOp(D, DATOS, op); COLA.push(op); MONEDA = D.config.moneda || '$';
+  await persistir();
+  if (aviso) toast(aviso + (navigator.onLine ? '' : ' en el celular. Se subirá cuando haya internet.'));
+  esCatalogo(op) ? renderAdmin() : renderSeccion();
+  programarSinc();
+  return true;
+}
+const guardarReg = (col, obj, msg) => cambiar({t:'reg', col, obj, msg});
+const borrarReg = (col, id, msg) => cambiar({t:'regBorrar', col, id, msg}, 'Registro eliminado');
+
+/* ======================= Sincronización con la nube ======================= */
+let sincronizando = false, otraVez = false, errorSinc = '', temporizador = null;
+function programarSinc(ms = 2500) { clearTimeout(temporizador); temporizador = setTimeout(() => sincronizar(), ms); }
+function pintarEstadoSinc() {
+  const el = $('#sinc'); if (!el) return;
+  const n = COLA.length, hora = ultimaSinc ? new Date(ultimaSinc).toLocaleTimeString('es', {hour:'2-digit', minute:'2-digit'}) : '';
+  el.className = 'sinc' + ((!navigator.onLine || errorSinc) && n ? ' sinc-alerta' : '');
+  el.textContent = sincronizando ? 'Sincronizando…'
+    : !navigator.onLine ? (n ? `Sin internet · ${n} ${n === 1 ? 'cambio guardado' : 'cambios guardados'} en el celular` : 'Sin internet')
+    : errorSinc ? `No se pudo sincronizar${n ? ` · ${n} pendiente${n === 1 ? '' : 's'}` : ''}`
+    : n ? `${n} ${n === 1 ? 'cambio' : 'cambios'} por subir`
+    : hora ? 'Sincronizado ' + hora : '';
+  el.title = errorSinc;
+}
+function mensajeCommit(ops) {
+  if (!ops.length) return 'Crear archivo de datos';
+  return ops.length === 1 && ops[0].msg ? ops[0].msg : `${ops.length} cambios desde la app`;
+}
+async function sincronizar(manual) {
+  if (!CFG) return;
+  if (sincronizando) { otraVez = true; return; }
+  if (!navigator.onLine) { pintarEstadoSinc(); if (manual) toast('Sin internet. Tus cambios están guardados en el celular.'); return; }
+  sincronizando = true; pintarEstadoSinc();
   try {
-    const [cat, dat] = await Promise.all([leerArchivo(CFG.pub, 'catalogo.json'), leerArchivo(CFG.priv, 'datos.json')]);
-    if (cat.txt) D = JSON.parse(cat.txt);
-    catSha = cat.sha;
-    DATOS = dat.txt ? {...VACIO_DATOS(), ...JSON.parse(dat.txt)} : VACIO_DATOS();
-    datSha = dat.sha;
-    MONEDA = D.config.moneda || '$';
-    ultimaSinc = new Date();
-    renderAdmin();
+    // 1. Fotos nuevas: se suben primero y el cambio pendiente queda apuntando al archivo
+    for (const op of COLA) if (op.t === 'prod' && op.p.fotoNueva) {
+      const ruta = `fotos/${op.p.id}-${Date.now().toString(36)}.jpg`;
+      await escribirArchivo(CFG.pub, ruta, op.p.fotoNueva.split(',')[1], null, 'Foto de ' + op.p.nombre);
+      FOTOS[ruta] = op.p.fotoNueva; op.p.foto = ruta; delete op.p.fotoNueva;
+      for (const p of D.productos) if (p.id === op.p.id && p.fotoNueva) { p.foto = ruta; delete p.fotoNueva; }
+      await persistir();
+    }
+    // 2. Se baja lo que hay en la nube, se le aplican los cambios del celular y se sube (reintenta si otro dispositivo guardó a la vez)
+    for (let intento = 0; intento < 3; intento++) {
+      const [rc, rd] = await Promise.all([leerArchivo(CFG.pub, 'catalogo.json'), leerArchivo(CFG.priv, 'datos.json')]);
+      const catNube = rc.txt ? JSON.parse(rc.txt) : catalogoVacio();
+      const datNube = rd.txt ? {...VACIO_DATOS(), ...JSON.parse(rd.txt)} : VACIO_DATOS();
+      const n = COLA.length, ops = COLA.slice(0, n);
+      const cat = structuredClone(catNube), dat = structuredClone(datNube);
+      ops.forEach(op => aplicarOp(cat, dat, op));
+      const opsCat = ops.filter(esCatalogo), opsDat = ops.filter(o => !esCatalogo(o));
+      try {
+        // solo se sube un archivo si su contenido realmente cambió
+        const txtCat = JSON.stringify(cat, null, 2) + '\n', txtDat = JSON.stringify(dat) + '\n';
+        if (txtCat !== rc.txt && (opsCat.length || !rc.txt)) await escribirArchivo(CFG.pub, 'catalogo.json', aB64(txtCat), rc.sha, mensajeCommit(opsCat));
+        if (txtDat !== rd.txt && (opsDat.length || !rd.txt)) await escribirArchivo(CFG.priv, 'datos.json', aB64(txtDat), rd.sha, mensajeCommit(opsDat));
+      } catch (e) { if (e.status === 409 || e.status === 422) continue; throw e; }
+      // Fotos que ya no usa ningún jabón: se borran de la nube
+      if (opsCat.length) {
+        const sobran = new Set(catNube.productos.map(p => p.foto).filter(f => f && f.startsWith('fotos/')));
+        cat.productos.forEach(p => sobran.delete(p.foto));
+        sobran.forEach(f => { delete FOTOS[f]; borrarArchivo(CFG.pub, f, 'Borrar foto sin usar'); });
+      }
+      COLA = COLA.slice(n);
+      D = cat; DATOS = dat; COLA.forEach(op => aplicarOp(D, DATOS, op));
+      MONEDA = D.config.moneda || '$';
+      ultimaSinc = new Date().toISOString(); errorSinc = '';
+      await persistir();
+      if (!$('#dlg').open) renderAdmin(); else pendienteRender = true;
+      if (manual) toast('Todo sincronizado');
+      return;
+    }
+    throw Object.assign(new Error('conflicto'), {status:409});
   } catch (e) {
-    $('#admin').innerHTML = `<div class="wrap"><div class="vacio" style="margin-top:40px"><h3>No se pudieron cargar los datos</h3><p>${esc(errorGitHub(e))}</p>
+    errorSinc = errorGitHub(e);
+    if (manual || [401, 403, 404].includes(e.status)) toast(errorSinc);
+  } finally {
+    sincronizando = false; pintarEstadoSinc();
+    if (otraVez) { otraVez = false; programarSinc(500); }
+  }
+}
+let pendienteRender = false;
+document.addEventListener('DOMContentLoaded', () => $('#dlg').addEventListener('close', () => { if (pendienteRender) { pendienteRender = false; renderAdmin(); } }));
+window.addEventListener('online', () => { pintarEstadoSinc(); sincronizar(); });
+window.addEventListener('offline', pintarEstadoSinc);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && CFG) sincronizar(); });
+
+/* Al entrar: se abre lo guardado en el celular y se sincroniza en segundo plano */
+async function cargarTodo() {
+  $('#admin').innerHTML = '<p class="cargando">Abriendo…</p>';
+  if (await cargarLocal()) { renderAdmin(); sincronizar(); return; }
+  if (!navigator.onLine) {
+    $('#admin').innerHTML = `<div class="wrap"><div class="vacio" style="margin-top:40px"><h3>Se necesita internet la primera vez</h3><p>Conéctate una vez para descargar tus datos. Después la app funciona sin internet.</p>
+      <button class="btn pri" id="reint">Reintentar</button></div></div>`;
+    $('#reint').onclick = cargarTodo; return;
+  }
+  $('#admin').innerHTML = '<p class="cargando">Descargando tus datos…</p>';
+  await sincronizar();
+  if (errorSinc) {
+    $('#admin').innerHTML = `<div class="wrap"><div class="vacio" style="margin-top:40px"><h3>No se pudieron descargar los datos</h3><p>${esc(errorSinc)}</p>
       <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="btn pri" id="reint">Reintentar</button>${ROL === 'admin' ? '<button class="btn" id="a-cfg">Revisar la conexión</button>' : ''}<button class="btn" id="a-salir">Salir</button></div></div></div>`;
     $('#reint').onclick = cargarTodo;
     $('#a-salir').onclick = salir;
     const a = $('#a-cfg'); if (a) a.onclick = () => pantallaConexion();
   }
 }
-/* Guarda el catálogo público (catalogo.json en el repositorio público) */
-async function guardarCatalogo(nuevo, mensaje) {
-  $('#velo').hidden = false;
-  try {
-    const limpio = structuredClone(nuevo); limpio.productos.forEach(p => delete p._preview);
-    catSha = await escribirArchivo(CFG.pub, 'catalogo.json', aB64(JSON.stringify(limpio, null, 2) + '\n'), catSha, mensaje);
-    D = limpio; MONEDA = D.config.moneda || '$';
-    toast('Guardado. La página pública se actualiza en 1 o 2 minutos.');
-    renderAdmin(); return true;
-  } catch (e) { toast(errorGitHub(e)); return false; }
-  finally { $('#velo').hidden = true; }
-}
-/* Cambia los datos privados (datos.json). Si otro dispositivo guardó antes, recarga y aplica el cambio otra vez. */
-async function cambiarDatos(fn, mensaje) {
-  $('#velo').hidden = false;
-  try {
-    for (let intento = 0; intento < 2; intento++) {
-      if (intento) { const d = await leerArchivo(CFG.priv, 'datos.json'); DATOS = d.txt ? {...VACIO_DATOS(), ...JSON.parse(d.txt)} : VACIO_DATOS(); datSha = d.sha; }
-      const copia = structuredClone(DATOS); fn(copia);
-      try {
-        datSha = await escribirArchivo(CFG.priv, 'datos.json', aB64(JSON.stringify(copia) + '\n'), datSha, mensaje);
-        DATOS = copia; ultimaSinc = new Date(); renderSeccion(); return true;
-      } catch (e) { if ((e.status === 409 || e.status === 422) && !intento) continue; throw e; }
-    }
-  } catch (e) { toast(errorGitHub(e)); return false; }
-  finally { $('#velo').hidden = true; }
-}
-const guardarReg = (col, obj, msg) => cambiarDatos(d => { const i = d[col].findIndex(x => x.id === obj.id); if (i >= 0) d[col][i] = obj; else d[col].push(obj); }, msg);
-const borrarReg = (col, id, msg) => cambiarDatos(d => { d[col] = d[col].filter(x => x.id !== id); }, msg).then(ok => ok && toast('Registro eliminado'));
-
 /* ======================= Entrada y configuración ======================= */
 function inicio() {
   if (ACCESO && ACCESO.llaves) return pantallaEntrar();
@@ -305,20 +397,19 @@ function renderAdmin() {
   const tabs = {resumen:'Resumen', catalogo:'Catálogo', ventas:'Ventas', produccion:'Producción', compras:'Compras', ajustes:'Ajustes'};
   $('#admin').innerHTML = `<div class="adm-top"><div class="wrap">
       <h1><span class="etq">${ROLES[ROL] || 'Administración'}</span>${esc(D.config.nombre)}</h1>
-      <span class="sinc" id="sinc"></span>
-      <button class="btn chico" id="a-act">Actualizar</button>
-      <a class="btn chico" href="${esc(linkTienda())}" target="_blank" rel="noopener">Ver catálogo</a>
-      <button class="btn chico plano" id="a-salir">Salir</button></div>
+      <button class="btn chico" id="a-act">Sincronizar</button>
+      <button class="btn chico plano" id="a-salir">Salir</button>
+      <span class="sinc" id="sinc" aria-live="polite"></span></div>
       <div class="wrap"><nav class="pestanas" role="tablist">${Object.entries(tabs).map(([k, v]) => `<button role="tab" data-tab="${k}" aria-selected="${tab === k}">${v}</button>`).join('')}</nav></div></div>
     <main class="wrap seccion" id="sec"></main>`;
-  $('#a-act').onclick = cargarTodo;
+  $('#a-act').onclick = () => sincronizar(true);
   $('#a-salir').onclick = salir;
-  $$('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; guardarLocal('jab_tab', tab); renderAdmin(); });
+  $$('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; guardarLocal('jab_tab', tab); renderAdmin(); window.scrollTo(0, 0); });
   renderSeccion();
 }
 function renderSeccion() {
   const s = $('#sec'); if (!s) return;
-  const si = $('#sinc'); if (si && ultimaSinc) si.textContent = 'Sincronizado ' + ultimaSinc.toLocaleTimeString('es', {hour:'2-digit', minute:'2-digit'});
+  pintarEstadoSinc();
   ({resumen:secResumen, catalogo:secCatalogo, ventas:secVentas, produccion:secProduccion, compras:secCompras, ajustes:secAjustes})[tab](s);
 }
 function confirmar(titulo, texto, boton, fn) {
@@ -378,25 +469,30 @@ function secResumen(s) {
 /* ---- Catálogo ---- */
 function secCatalogo(s) {
   const st = stockProductos(), ej = D.productos.some(p => p.ejemplo);
-  s.innerHTML = `<div class="sec-cab"><h2>Catálogo</h2><button class="btn pri" id="nuevo-prod">Nuevo jabón</button></div>
+  s.innerHTML = `<div class="sec-cab"><h2>Catálogo</h2><div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" id="compartir-cat">Compartir por WhatsApp</button><button class="btn pri" id="nuevo-prod">Nuevo jabón</button></div></div>
     ${ej ? `<div class="aviso">Los jabones marcados como <b>Ejemplo</b> son de muestra. Edítalos con tus datos o <button class="btn chico" id="quitar-ej">Quitar ejemplos</button></div>` : ''}
-    <p class="muted small" style="margin:0">El catálogo es público. Al guardar, la página se actualiza en 1 o 2 minutos.</p>
+    <p class="muted small" style="margin:0">Los cambios se guardan en el celular y se suben a la nube cuando hay internet.</p>
     <div class="lista">${D.productos.map(p => `<div class="reg"><div class="prod-row">
         <div class="mini">${fotoHTML(p, fotoSrc(p))}</div>
         <div style="min-width:0"><h4>${esc(p.nombre)} ${p.ejemplo ? '<span class="estado e-neu">Ejemplo</span>' : ''}</h4>
           <div class="det">${din(p.precio)}${p.peso ? ' · ' + esc(p.peso) + ' g' : ''} · ${(p.pieles || []).map(k => PIELES[k]).join(', ') || 'sin tipo de piel'}</div>
           <div class="det">Quedan <b class="num">${st[p.id]?.stock ?? 0}</b>
             ${p.visible === false ? ' · <span class="estado e-neu">Oculto</span>' : ''}${p.agotado ? ' · <span class="estado e-bad">Agotado</span>' : ''}</div></div>
-        <div class="der"><button class="btn chico" data-edit="${p.id}">Editar</button></div></div></div>`).join('') || '<div class="vacio"><h3>Tu catálogo está vacío</h3>Agrega tu primer jabón con su descripción, tipos de piel y precio.</div>'}</div>`;
+        <div class="der"><button class="btn chico" data-edit="${p.id}">Editar</button><button class="btn chico plano" data-comp="${p.id}">Compartir</button></div></div></div>`).join('') || '<div class="vacio"><h3>Tu catálogo está vacío</h3>Agrega tu primer jabón con su descripción, tipos de piel y precio.</div>'}</div>`;
   $('#nuevo-prod').onclick = () => editarProducto(null);
+  $('#compartir-cat').onclick = () => opcionesCompartir();
   $$('[data-edit]').forEach(b => b.onclick = () => editarProducto(b.dataset.edit));
-  const q = $('#quitar-ej'); if (q) q.onclick = () => confirmar('Quitar los jabones de ejemplo', 'Se borrarán del catálogo público los jabones de muestra.', 'Quitar ejemplos', () => {
-    const n = structuredClone(D); n.productos = n.productos.filter(p => !p.ejemplo); guardarCatalogo(n, 'Quitar jabones de ejemplo');
+  $$('[data-comp]').forEach(b => b.onclick = () => opcionesCompartir(prod(b.dataset.comp)));
+  const q = $('#quitar-ej'); if (q) q.onclick = () => confirmar('Quitar los jabones de ejemplo', 'Se borrarán del catálogo los jabones de muestra.', 'Quitar ejemplos', async () => {
+    const ej = D.productos.filter(p => p.ejemplo);
+    for (const p of ej) { aplicarOp(D, DATOS, {t:'prodBorrar', id:p.id}); COLA.push({t:'prodBorrar', id:p.id, msg:'Quitar jabones de ejemplo'}); }
+    await persistir(); toast('Ejemplos quitados'); renderAdmin(); programarSinc();
   });
 }
 function editarProducto(id) {
   const p = id ? structuredClone(prod(id)) : {id:nid('p'), nombre:'', descripcion:'', pieles:[], ingredientes:'', uso:'', peso:100, precio:0, color:'#c9b48f', foto:'', visible:true, agotado:false};
-  const fotoAnterior = p.foto; let fotoNueva = null;
+  let fotoNueva = p.fotoNueva || null;
   const st = stockProductos()[p.id];
   abrir(`<form class="dlg" id="f-prod">
     <div class="dlg-cab"><h2>${id ? 'Editar jabón' : 'Nuevo jabón'}</h2><button type="button" class="cerrar" data-cerrar aria-label="Cerrar">×</button></div>
@@ -431,8 +527,8 @@ function editarProducto(id) {
     const br = $('#p-borrar', d);
     if (br) br.onclick = async () => {
       if (!br.dataset.ok) { br.dataset.ok = 1; br.textContent = '¿Seguro? Toca para eliminar'; return; }
-      const n = structuredClone(D); n.productos = n.productos.filter(x => x.id !== p.id); d.close();
-      if (await guardarCatalogo(n, 'Eliminar ' + p.nombre) && fotoAnterior && !/^(data:|https?:)/.test(fotoAnterior)) borrarArchivo(CFG.pub, fotoAnterior, 'Borrar foto de ' + p.nombre);
+      d.close();
+      cambiar({t:'prodBorrar', id:p.id, msg:'Eliminar ' + p.nombre}, 'Jabón eliminado');
     };
     $('#f-prod', d).onsubmit = async e => {
       e.preventDefault();
@@ -441,17 +537,9 @@ function editarProducto(id) {
         pieles:$$('.marcas input[value]', d).filter(i => i.checked && PIELES[i.value]).map(i => i.value),
         visible:$('#p-visible', d).checked, agotado:$('#p-agotado', d).checked});
       delete p.ejemplo;
+      if (fotoNueva) p.fotoNueva = fotoNueva; else delete p.fotoNueva;   // la foto se sube en la próxima sincronización
       d.close();
-      if (fotoNueva) {
-        $('#velo').hidden = false;
-        try { const ruta = `fotos/${p.id}-${Date.now().toString(36)}.jpg`;
-          await escribirArchivo(CFG.pub, ruta, fotoNueva.split(',')[1], null, 'Foto de ' + p.nombre); fotosRecientes[ruta] = fotoNueva; p.foto = ruta; }
-        catch (err) { $('#velo').hidden = true; toast('No se pudo subir la foto. ' + errorGitHub(err)); return; }
-      }
-      const n = structuredClone(D); const i = n.productos.findIndex(x => x.id === p.id);
-      if (i >= 0) n.productos[i] = p; else n.productos.push(p);
-      if (await guardarCatalogo(n, (id ? 'Editar ' : 'Agregar ') + p.nombre) && fotoAnterior && fotoAnterior !== p.foto && !/^(data:|https?:)/.test(fotoAnterior))
-        borrarArchivo(CFG.pub, fotoAnterior, 'Reemplazar foto de ' + p.nombre);
+      cambiar({t:'prod', p, msg:(id ? 'Editar ' : 'Agregar ') + p.nombre}, 'Guardado');
     };
   });
 }
@@ -659,44 +747,159 @@ function editarCompra(c) {
 }
 
 /* ---- Ajustes ---- */
+let avisoInstalar = null;   // Chrome avisa cuando la app se puede instalar
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); avisoInstalar = e; if (tab === 'ajustes') renderSeccion(); });
+window.addEventListener('appinstalled', () => { avisoInstalar = null; toast('App instalada en tu celular'); });
+const instalada = () => matchMedia('(display-mode: standalone)').matches;
 function secAjustes(s) {
-  const c = D.config, link = linkTienda();
+  const c = D.config;
   s.innerHTML = `<div class="sec-cab"><h2>Ajustes</h2></div>
-    <section class="panel" style="max-width:620px;display:flex;flex-direction:column;gap:10px"><h3 style="margin:0">Link del catálogo</h3>
-      <div class="enlace-copia"><code>${esc(link)}</code><button class="btn chico" id="a-copiar">Copiar link</button></div>
-      <p class="ayuda" style="margin:0">Compártelo por WhatsApp, Instagram o Facebook. Quien lo abra solo ve el catálogo; tus ventas, compras y producción son privadas.</p></section>
+    ${instalada() ? '' : `<section class="panel" style="max-width:620px;display:flex;flex-direction:column;gap:10px"><h3 style="margin:0">Instalar en el celular</h3>
+      ${avisoInstalar ? '<p class="ayuda" style="margin:0">Agrega la app a tu pantalla de inicio para abrirla como cualquier otra app, incluso sin internet.</p><div><button class="btn pri" id="a-inst">Instalar app</button></div>'
+        : '<p class="ayuda" style="margin:0">En Chrome, toca el menú <b>⋮</b> (arriba a la derecha) y elige <b>Instalar app</b> o <b>Agregar a la pantalla principal</b>.</p>'}</section>`}
     <form class="panel" id="f-aj" style="display:flex;flex-direction:column;gap:14px;max-width:620px">
       <h3 style="margin:0">Datos del negocio</h3>
       <label class="campo"><span>Nombre del negocio</span><input id="a-nombre" required value="${esc(c.nombre)}"></label>
       <label class="campo"><span>Frase de presentación</span><textarea id="a-slogan">${esc(c.slogan)}</textarea></label>
       <div class="fila">
-        <label class="campo"><span>WhatsApp para pedidos</span><input id="a-wa" inputmode="tel" value="${esc(c.whatsapp)}" placeholder="50370000000"><span class="ayuda">Con código de país, sin + ni espacios.</span></label>
+        <label class="campo"><span>WhatsApp del negocio</span><input id="a-wa" inputmode="tel" value="${esc(c.whatsapp)}" placeholder="50370000000"><span class="ayuda">Con código de país, sin + ni espacios. Aparece en el catálogo que compartes.</span></label>
         <label class="campo"><span>Símbolo de moneda</span><input id="a-moneda" value="${esc(c.moneda)}" maxlength="4"></label></div>
-      <label class="campo"><span>Saludo del pedido</span><input id="a-intro" value="${esc(c.intro)}"><span class="ayuda">Primera línea del mensaje que recibes por WhatsApp.</span></label>
+      <label class="campo"><span>Saludo del pedido</span><input id="a-intro" value="${esc(c.intro)}"><span class="ayuda">Primera línea de los pedidos que envían tus clientas.</span></label>
       <div><button class="btn pri">Guardar</button></div>
     </form>
-    <section class="panel" style="max-width:620px;display:flex;flex-direction:column;gap:10px"><h3 style="margin:0">Respaldo</h3>
-      <p class="ayuda" style="margin:0">Cada cambio queda guardado con su historial. Además puedes descargar una copia de tus datos cuando quieras.</p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="a-resp">Descargar respaldo</button>
+    <section class="panel" style="max-width:620px;display:flex;flex-direction:column;gap:10px"><h3 style="margin:0">Sincronización y respaldo</h3>
+      <p class="ayuda" style="margin:0">Todo se guarda en este celular y, cuando hay internet, también en la nube con su historial. Si cambias de celular, al entrar se descargan tus datos.</p>
+      <p class="ayuda" style="margin:0" id="a-estado"></p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="a-sinc">Sincronizar ahora</button><button class="btn" id="a-resp">Enviar copia de respaldo</button>
         ${ROL === 'admin' ? '<button class="btn" id="a-gh">Conexión y contraseñas</button>' : ''}</div></section>`;
-  $('#a-copiar').onclick = () => copiarTexto(link, 'Link copiado');
+  const n = COLA.length;
+  $('#a-estado').textContent = (n ? `${n} ${n === 1 ? 'cambio' : 'cambios'} por subir. ` : 'No hay cambios por subir. ') + (ultimaSinc ? 'Última sincronización: ' + new Date(ultimaSinc).toLocaleString('es') + '.' : '');
+  const bi = $('#a-inst'); if (bi) bi.onclick = async () => { avisoInstalar.prompt(); await avisoInstalar.userChoice; avisoInstalar = null; renderSeccion(); };
   const bg = $('#a-gh'); if (bg) bg.onclick = pantallaConexion;
-  $('#a-resp').onclick = () => {
-    const blob = new Blob([JSON.stringify({catalogo:D, datos:DATOS, fecha:new Date().toISOString()}, null, 2)], {type:'application/json'});
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `respaldo-jabones-${hoy()}.json`; a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  $('#a-sinc').onclick = () => sincronizar(true);
+  $('#a-resp').onclick = async () => {
+    const archivo = new File([JSON.stringify({catalogo:D, datos:DATOS, fecha:new Date().toISOString()}, null, 2)], `respaldo-jabones-${hoy()}.json`, {type:'application/json'});
+    await compartirArchivos([archivo], 'Respaldo de ' + (D.config.nombre || 'Jabones'));
   };
   $('#f-aj').onsubmit = e => {
     e.preventDefault();
-    const n = structuredClone(D);
-    n.config = {nombre:$('#a-nombre').value.trim(), slogan:$('#a-slogan').value.trim(), whatsapp:$('#a-wa').value.replace(/\D/g, ''),
+    const config = {nombre:$('#a-nombre').value.trim(), slogan:$('#a-slogan').value.trim(), whatsapp:$('#a-wa').value.replace(/\D/g, ''),
       moneda:$('#a-moneda').value.trim() || '$', intro:$('#a-intro').value.trim() || 'Hola, quiero hacer este pedido:'};
-    guardarCatalogo(n, 'Actualizar datos del negocio');
+    cambiar({t:'config', config, msg:'Actualizar datos del negocio'}, 'Guardado');
   };
+}
+
+/* ======================= Compartir el catálogo por WhatsApp ======================= */
+async function compartirArchivos(archivos, texto) {
+  if (navigator.canShare && navigator.canShare({files:archivos})) {
+    try { await navigator.share({files:archivos, text:texto}); return; }
+    catch (e) { if (e.name === 'AbortError') return; }
+  }
+  for (const f of archivos) {   // sin la opción de compartir: se descargan para enviarlas desde la galería
+    const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }
+  toast(archivos.length > 1 ? 'Archivos descargados. Envíalos desde tu galería o tus descargas.' : 'Archivo descargado. Envíalo desde tus descargas.');
+}
+async function compartirTexto(texto) {
+  if (navigator.share) { try { await navigator.share({text:texto}); return; } catch (e) { if (e.name === 'AbortError') return; } }
+  window.open('https://wa.me/?text=' + encodeURIComponent(texto), '_blank', 'noopener');
+}
+const disponibles = () => D.productos.filter(p => p.visible !== false && !p.agotado && !p.ejemplo);
+function textoCatalogo(lista) {
+  const c = D.config;
+  const lineas = lista.map(p => [`*${p.nombre}* — ${din(p.precio)}${p.peso ? ` (${p.peso} g)` : ''}`,
+    (p.pieles || []).length ? `Para piel: ${p.pieles.map(k => PIELES[k]).join(', ')}` : '', p.descripcion].filter(Boolean).join('\n'));
+  return [`*${c.nombre}*`, c.slogan, '', ...lineas.flatMap(l => [l, '']),
+    'Haz tu pedido respondiendo a este mensaje.'].filter((l, i, a) => l || a[i - 1]).join('\n').trim();
+}
+function opcionesCompartir(p) {
+  const lista = p ? [p] : disponibles();
+  if (!lista.length) { toast('No hay jabones disponibles para compartir.'); return; }
+  abrir(`<div class="dlg"><div class="dlg-cab"><h2>${p ? 'Compartir ' + esc(p.nombre) : 'Compartir catálogo'}</h2><button class="cerrar" data-cerrar aria-label="Cerrar">×</button></div>
+    <div class="dlg-cuerpo">
+      <p style="margin:0">${p ? 'Envía este jabón a tus clientas.' : `Se comparten los ${lista.length} jabones que están visibles y no agotados.`}</p>
+      <button class="btn pri" id="cp-img">${p ? 'Como imagen' : 'Como imágenes (una por jabón)'}</button>
+      <button class="btn" id="cp-txt">Como mensaje de texto</button>
+      <p class="ayuda" style="margin:0">Se abre el menú de compartir de tu celular: elige WhatsApp y el chat o estado.</p>
+    </div></div>`, d => {
+    $('#cp-txt', d).onclick = () => { d.close(); compartirTexto(textoCatalogo(lista)); };
+    $('#cp-img', d).onclick = async e => {
+      const b = e.currentTarget; b.disabled = true; b.textContent = 'Preparando imágenes…';
+      try {
+        const archivos = [];
+        for (const x of lista) archivos.push(new File([await imagenJabon(x)], `${x.nombre.replace(/[^\w]+/g, '-').toLowerCase() || 'jabon'}.jpg`, {type:'image/jpeg'}));
+        d.close();
+        await compartirArchivos(archivos, p ? textoCatalogo([p]) : `*${D.config.nombre}* · Catálogo de jabones`);
+      } catch { b.disabled = false; b.textContent = 'Reintentar'; toast('No se pudieron preparar las imágenes.'); }
+    };
+  });
+}
+/* Tarjeta de 1080 × 1350 (formato vertical de WhatsApp e Instagram) */
+async function imagenJabon(p) {
+  await document.fonts.ready;
+  const W = 1080, H = 1350, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d');
+  x.fillStyle = '#f1f3ee'; x.fillRect(0, 0, W, H);
+  // Foto o pastilla de color
+  const FH = 760, src = fotoSrc(p);
+  let img = null;
+  if (src) img = await new Promise(ok => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = src; });
+  if (img) {
+    const k = Math.max(W / img.width, FH / img.height), w = img.width * k, h = img.height * k;
+    x.drawImage(img, (W - w) / 2, (FH - h) / 2, w, h);
+  } else {
+    x.fillStyle = '#e7ebe2'; x.fillRect(0, 0, W, FH);
+    x.fillStyle = p.color || '#c9b48f'; redondeado(x, 260, 180, 560, 400, 70); x.fill();
+    x.fillStyle = 'rgba(255,255,255,.85)'; x.font = '160px "Young Serif", Georgia, serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.fillText((p.nombre || '?').trim()[0] || '?', W / 2, 385);
+  }
+  // Textos
+  x.textAlign = 'left'; x.textBaseline = 'alphabetic';
+  let y = FH + 90;
+  x.fillStyle = '#1d2520'; x.font = '64px "Young Serif", Georgia, serif';
+  y = escribir(x, p.nombre, 70, y, W - 140, 72, 2) + 20;
+  const pieles = (p.pieles || []).map(k => PIELES[k]);
+  if (pieles.length) {
+    x.font = '600 30px Figtree, sans-serif'; let px = 70;
+    for (const t of pieles) {
+      const w = x.measureText(t).width + 40;
+      if (px + w > W - 70) break;
+      x.fillStyle = '#efdcd8'; redondeado(x, px, y - 34, w, 50, 25); x.fill();
+      x.fillStyle = '#7c3f39'; x.fillText(t, px + 20, y + 2); px += w + 12;
+    }
+    y += 66;
+  }
+  x.fillStyle = '#626d61'; x.font = '34px Figtree, sans-serif';
+  y = escribir(x, p.descripcion || '', 70, y, W - 140, 46, 3);
+  // Precio y pie
+  x.fillStyle = '#3d6a4b'; x.font = '700 76px Figtree, sans-serif';
+  x.fillText(din(p.precio), 70, H - 110);
+  if (p.peso) { const w = x.measureText(din(p.precio)).width; x.fillStyle = '#626d61'; x.font = '500 34px Figtree, sans-serif'; x.fillText(`${p.peso} g`, 90 + w, H - 110); }
+  x.fillStyle = '#3d6a4b'; x.fillRect(0, H - 64, W, 64);
+  x.fillStyle = '#ffffff'; x.font = '600 30px Figtree, sans-serif';
+  x.fillText(D.config.nombre || '', 70, H - 22);
+  if (D.config.whatsapp) { x.textAlign = 'right'; x.fillText('WhatsApp +' + D.config.whatsapp, W - 70, H - 22); }
+  return new Promise(ok => c.toBlob(ok, 'image/jpeg', .9));
+}
+function redondeado(x, l, t, w, h, r) { x.beginPath(); x.roundRect ? x.roundRect(l, t, w, h, r) : x.rect(l, t, w, h); }
+function escribir(x, texto, l, y, ancho, alto, maxLineas) {
+  const palabras = String(texto).split(/\s+/).filter(Boolean); let linea = '', n = 0;
+  for (let i = 0; i < palabras.length; i++) {
+    const prueba = linea ? linea + ' ' + palabras[i] : palabras[i];
+    if (x.measureText(prueba).width > ancho && linea) {
+      if (++n === maxLineas) { x.fillText(linea.replace(/[,.;:]?$/, '…'), l, y); return y + alto; }
+      x.fillText(linea, l, y); y += alto; linea = palabras[i];
+    } else linea = prueba;
+  }
+  if (linea) { x.fillText(linea, l, y); y += alto; }
+  return y;
 }
 
 /* ======================= Arranque ======================= */
 inicio();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 </script>
 </body>
 </html>

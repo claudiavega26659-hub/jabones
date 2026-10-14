@@ -179,3 +179,18 @@ a{color:var(--accent)}
 .enlace-copia code{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:14px;overflow-wrap:anywhere}
 .pasos{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:14px}
 .sinc{font-size:12px;color:var(--muted)}
+
+/* App en el celular: pestañas abajo, al alcance del pulgar */
+.sinc{flex-basis:100%;order:9}
+.sinc-alerta{color:var(--warn);font-weight:600}
+@media (max-width:720px){
+  .adm-top .wrap:first-child{padding-block:10px;gap:8px}
+  .adm-top h1{font-size:19px}
+  .adm-top .pestanas{position:fixed;left:0;right:0;bottom:0;z-index:10;margin:0;gap:2px;padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px));
+    background:var(--surface);border-top:1px solid var(--line);box-shadow:0 -6px 18px rgba(0,0,0,.06);overflow-x:auto}
+  .pestanas button{flex:1 0 auto;text-align:center;padding:10px 8px;font-size:12.5px}
+  .seccion{padding-bottom:calc(110px + env(safe-area-inset-bottom,0px))}
+  .toast{bottom:calc(90px + env(safe-area-inset-bottom,0px))}
+  .reg .der{gap:4px}
+  dialog{width:calc(100vw - 16px);max-height:calc(100dvh - 16px)}
+}

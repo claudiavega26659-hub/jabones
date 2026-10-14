@@ -37,3 +37,11 @@ Las carpetas `jabones` y `jabones-datos` ya están preparadas como repositorios.
 - **Dueña:** maneja el catálogo, las ventas, la producción y las compras. Nunca ve GitHub ni la clave.
 - La clave de GitHub se guarda **cifrada** en el navegador. Sin una de las dos contraseñas no se puede usar.
 - Si la dueña olvida su contraseña, la administradora entra con la suya y le pone una nueva en *Ajustes → Conexión y contraseñas*.
+
+## App en el celular (Android)
+
+- Abre el panel en **Chrome** del celular (`…/admin`), entra con la contraseña y toca **Ajustes → Instalar app**. También puedes ir al menú **⋮ → Instalar app**.
+- La app queda en la pantalla de inicio y **funciona sin internet**. Todo se guarda en el celular y se sube a la nube sola cuando hay conexión. Arriba aparece el estado: *Sincronizado*, *cambios por subir* o *Sin internet*.
+- La primera vez en un celular nuevo se necesita internet para descargar los datos.
+- **Compartir por WhatsApp:** en **Catálogo** toca **Compartir por WhatsApp** (todo el catálogo) o **Compartir** en un jabón. Se puede enviar como imágenes o como mensaje de texto.
+- **Respaldo:** en **Ajustes → Enviar copia de respaldo** se genera un archivo que se puede mandar por WhatsApp o correo.
