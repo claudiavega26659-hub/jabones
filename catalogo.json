@@ -46,13 +46,12 @@
     },
     {
       "id": "ej3",
-      "ejemplo": true,
-      "nombre": "Rosa mosqueta y arcilla rosa",
+      "nombre": "Rosa mosqueta",
       "descripcion": "Regenera y aporta luminosidad. La arcilla rosa limpia sin resecar y la rosa mosqueta nutre la piel madura.",
       "pieles": [
-        "madura",
         "normal",
-        "seca"
+        "seca",
+        "madura"
       ],
       "ingredientes": "Aceite de oliva, manteca de cacao, aceite de rosa mosqueta, arcilla rosa, aceite esencial de geranio.",
       "uso": "Aplica en rostro y cuello mañana y noche. Enjuaga y continúa con tu crema habitual.",
