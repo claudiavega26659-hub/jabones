@@ -815,14 +815,25 @@ function textoCatalogo(lista) {
 }
 function opcionesCompartir(p) {
   const lista = p ? [p] : disponibles();
-  if (!lista.length) { toast('No hay jabones disponibles para compartir.'); return; }
+  // Por qué algunos jabones no se envían: son de ejemplo, están ocultos o agotados
+  const fuera = p ? [] : D.productos.filter(x => !lista.includes(x));
+  const nEj = fuera.filter(x => x.ejemplo).length, nOtros = fuera.length - nEj;
+  const aviso = [nEj ? `${nEj} de ejemplo` : '', nOtros ? `${nOtros} oculto${nOtros === 1 ? '' : 's'} o agotado${nOtros === 1 ? '' : 's'}` : ''].filter(Boolean).join(' y ');
+  const n = lista.length;
   abrir(`<div class="dlg"><div class="dlg-cab"><h2>${p ? 'Compartir ' + esc(p.nombre) : 'Compartir catálogo'}</h2><button class="cerrar" data-cerrar aria-label="Cerrar">×</button></div>
     <div class="dlg-cuerpo">
-      <p style="margin:0">${p ? 'Envía este jabón a tus clientas.' : `Se comparten los ${lista.length} jabones que están visibles y no agotados.`}</p>
-      <button class="btn pri" id="cp-img">${p ? 'Como imagen' : 'Como imágenes (una por jabón)'}</button>
-      <button class="btn" id="cp-txt">Como mensaje de texto</button>
+      <p style="margin:0">${p ? 'Envía este jabón a tus clientas.' : n ? `Se ${n === 1 ? 'envía 1 jabón' : `envían ${n} jabones`}.` : 'Todavía no hay jabones propios para enviar.'}</p>
+      ${aviso ? `<div class="aviso">No se ${fuera.length === 1 ? 'incluye' : 'incluyen'} ${aviso}.${nEj ? ' Edita los de ejemplo con tus datos (dejan de ser ejemplo al guardarlos) o quítalos.' : ''}</div>` : ''}
+      ${n ? `<button class="btn pri" id="cp-img">${n === 1 ? 'Como imagen' : `Como imágenes (${n}, una por jabón)`}</button>
+      <button class="btn" id="cp-txt">Como mensaje de texto</button>` : ''}
+      ${p ? '' : `<button class="btn" id="cp-link">Enviar el link del catálogo</button>
+      <p class="ayuda" style="margin:0">Con el link, tus clientas ven el catálogo completo en internet y te envían su pedido por WhatsApp.</p>`}
       <p class="ayuda" style="margin:0">Se abre el menú de compartir de tu celular: elige WhatsApp y el chat o estado.</p>
     </div></div>`, d => {
+    const bl = $('#cp-link', d);
+    if (bl) bl.onclick = () => { d.close(); const c = D.config;
+      compartirTexto([`*${c.nombre}*`, c.slogan, '', 'Mira nuestro catálogo y haz tu pedido aquí:', linkTienda()].filter((l, i, a) => l || a[i - 1]).join('\n')); };
+    if (!n) return;
     $('#cp-txt', d).onclick = () => { d.close(); compartirTexto(textoCatalogo(lista)); };
     $('#cp-img', d).onclick = async e => {
       const b = e.currentTarget; b.disabled = true; b.textContent = 'Preparando imágenes…';
