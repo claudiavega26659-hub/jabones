@@ -27,8 +27,7 @@
     },
     {
       "id": "ej2",
-      "ejemplo": true,
-      "nombre": "Carbón activado y árbol de té",
+      "nombre": "Carbón activado",
       "descripcion": "Absorbe el exceso de grasa y ayuda a limpiar los poros. Su aceite de árbol de té ayuda a prevenir brotes.",
       "pieles": [
         "grasa",
