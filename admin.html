@@ -275,7 +275,8 @@ function marcoAcceso(titulo, cuerpo) {
     <section class="panel" style="display:flex;flex-direction:column;gap:14px"><h3 style="margin:0">${titulo}</h3>${cuerpo}</section></main>`;
 }
 async function pintarNombre() { const n = await nombreNegocio(); if (n && $('#m-nombre')) { $('#m-nombre').textContent = n; $('#m-sello').textContent = n[0]; document.title = 'Panel · ' + n; } }
-function pantallaEntrar() {
+function pantallaEntrar(aviso = '') {
+  setTimeout(() => { const m = $('#e-msg'); if (m && aviso) m.textContent = aviso; }, 0);
   $('#admin').innerHTML = marcoAcceso('Entrar al panel', `
     <form id="f-ent" style="display:flex;flex-direction:column;gap:14px">
       <label class="campo"><span>Contraseña</span><input id="e-pass" type="password" required autocomplete="current-password" autofocus></label>
@@ -293,7 +294,7 @@ function pantallaEntrar() {
 }
 function pantallaSinConfigurar() {
   $('#admin').innerHTML = marcoAcceso('Este dispositivo todavía no está configurado', `
-    <p style="margin:0">Pídele a tu administradora que lo configure. Después solo necesitarás tu contraseña para entrar.</p>
+    <p style="margin:0">Pídele a tu administradora el <b>link de acceso</b> y ábrelo en este celular. Después solo necesitarás tu contraseña para entrar.</p>
     <button class="btn" id="s-conf" style="align-self:flex-start">Soy la administradora: configurar</button>`);
   pintarNombre();
   $('#s-conf').onclick = () => pantallaConexion();
@@ -767,6 +768,9 @@ function secAjustes(s) {
       <label class="campo"><span>Saludo del pedido</span><input id="a-intro" value="${esc(c.intro)}"><span class="ayuda">Primera línea de los pedidos que envían tus clientas.</span></label>
       <div><button class="btn pri">Guardar</button></div>
     </form>
+    ${ROL === 'admin' ? `<section class="panel" style="max-width:620px;display:flex;flex-direction:column;gap:10px"><h3 style="margin:0">Dar acceso a la dueña</h3>
+      <p class="ayuda" style="margin:0">Crea un link para que ella entre desde su celular sin que tengas que configurarlo tú. Al abrirlo solo le pide su contraseña.</p>
+      <div><button class="btn pri" id="a-link">Crear link de acceso</button></div></section>` : ''}
     <section class="panel" style="max-width:620px;display:flex;flex-direction:column;gap:10px"><h3 style="margin:0">Sincronización y respaldo</h3>
       <p class="ayuda" style="margin:0">Todo se guarda en este celular y, cuando hay internet, también en la nube con su historial. Si cambias de celular, al entrar se descargan tus datos.</p>
       <p class="ayuda" style="margin:0" id="a-estado"></p>
@@ -776,6 +780,7 @@ function secAjustes(s) {
   $('#a-estado').textContent = (n ? `${n} ${n === 1 ? 'cambio' : 'cambios'} por subir. ` : 'No hay cambios por subir. ') + (ultimaSinc ? 'Última sincronización: ' + new Date(ultimaSinc).toLocaleString('es') + '.' : '');
   const bi = $('#a-inst'); if (bi) bi.onclick = async () => { avisoInstalar.prompt(); await avisoInstalar.userChoice; avisoInstalar = null; renderSeccion(); };
   const bg = $('#a-gh'); if (bg) bg.onclick = pantallaConexion;
+  const bk = $('#a-link'); if (bk) bk.onclick = mostrarLinkAcceso;
   $('#a-sinc').onclick = () => sincronizar(true);
   $('#a-resp').onclick = async () => {
     const archivo = new File([JSON.stringify({catalogo:D, datos:DATOS, fecha:new Date().toISOString()}, null, 2)], `respaldo-jabones-${hoy()}.json`, {type:'application/json'});
@@ -907,8 +912,44 @@ function escribir(x, texto, l, y, ancho, alto, maxLineas) {
   return y;
 }
 
+/* ======================= Link de acceso para la dueña ======================= */
+/* El link lleva la conexión cifrada y solo la llave de la dueña: sin su contraseña no sirve, y no da acceso de administradora */
+const aB64url = s => btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const deB64url = s => atob(s.replace(/-/g, '+').replace(/_/g, '/'));
+function mostrarLinkAcceso() {
+  if (!ACCESO.llaves.duena) { toast('Primero crea la contraseña de la dueña en Conexión y contraseñas.'); return; }
+  const link = location.origin + location.pathname + '#acceso=' + aB64url(JSON.stringify({datos:ACCESO.datos, llaves:{duena:ACCESO.llaves.duena}}));
+  abrir(`<div class="dlg"><div class="dlg-cab"><h2>Link de acceso</h2><button class="cerrar" data-cerrar aria-label="Cerrar">×</button></div>
+    <div class="dlg-cuerpo">
+      <ol class="pasos">
+        <li>Envíale este link a la dueña.</li>
+        <li>Dile su contraseña <b>por otro medio</b> (una llamada o en persona), no en el mismo chat.</li>
+        <li>Ella abre el link en <b>Chrome</b>, escribe su contraseña y luego instala la app desde Ajustes.</li>
+      </ol>
+      <textarea class="inp" rows="4" readonly id="lk-txt">${esc(link)}</textarea>
+      <p class="ayuda" style="margin:0">El link no muestra tus datos de GitHub y no sirve sin la contraseña. Si cambias la clave de GitHub o su contraseña, envíale un link nuevo.</p>
+    </div>
+    <div class="dlg-pie"><button class="btn" id="lk-copiar">Copiar link</button><button class="btn pri" id="lk-enviar">Enviar</button></div></div>`, d => {
+    $('#lk-copiar', d).onclick = () => copiarTexto(link, 'Link copiado');
+    $('#lk-enviar', d).onclick = () => compartirTexto(`Acceso a la app de ${D.config.nombre || 'tu negocio'}. Ábrelo en Chrome:\n${link}`);
+  });
+}
+/* Al abrir la app con un link de acceso: se guarda en este dispositivo y se pide la contraseña */
+function recibirAcceso() {
+  const m = location.hash.match(/^#acceso=([\w-]+)$/); if (!m) return false;
+  history.replaceState(null, '', location.pathname);
+  let nuevo;
+  try { nuevo = JSON.parse(deB64url(m[1])); if (!nuevo.datos || !nuevo.llaves || !nuevo.llaves.duena) throw 0; }
+  catch { inicio(); toast('El link de acceso no es válido. Pide uno nuevo.'); return true; }
+  const guardar = () => { ACCESO = {datos:nuevo.datos, llaves:{duena:nuevo.llaves.duena}}; guardarLocal('jab_acceso', ACCESO); borrarLocal('jab_github');
+    pantallaEntrar('Acceso recibido. Escribe tu contraseña para entrar.'); };
+  if (ACCESO && ACCESO.llaves) { inicio(); confirmar('Reemplazar el acceso de este dispositivo', 'Este dispositivo ya está configurado. Si continúas, se usará el acceso del link, que entra con la contraseña de la dueña.', 'Reemplazar', guardar); }
+  else guardar();
+  return true;
+}
+
 /* ======================= Arranque ======================= */
-inicio();
+if (!recibirAcceso()) inicio();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 </script>
