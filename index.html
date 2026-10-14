@@ -3,14 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Jabones Artesanales</title>
+<meta name="theme-color" content="#1f3a1c">
+<title>Fragancia de la Naturaleza</title>
 <meta name="description" content="Catálogo de jabones artesanales. Elige tus jabones y haz tu pedido por WhatsApp.">
+<link rel="icon" href="icono-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Young+Serif&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Young+Serif&display=swap">
 <link rel="stylesheet" href="estilos.css">
+<link rel="stylesheet" href="tienda.css">
 </head>
-<body>
+<body class="tienda">
 <div id="tienda"><p class="cargando">Cargando catálogo…</p></div>
 <dialog id="dlg"></dialog>
 <div id="toast" class="toast" hidden></div>
@@ -22,6 +25,12 @@ let filtroPiel = '', textoBusqueda = '';
 let carrito = leerLocal('jab_carrito', {});
 const prod = id => D.productos.find(p => p.id === id);
 const visibles = () => D.productos.filter(p => p.visible !== false);
+const ICONO = {
+  bolsa:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 7h12l-1 13H7z"/><path d="M9 7a3 3 0 0 1 6 0"/></svg>',
+  buscar:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>',
+  atras:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>',
+  hoja:'<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M20 4c-9 0-15 4-15 11 0 1.6.4 3 1 4l1.4-1.4C9 13 12 10 16 8c-3 3-5.6 6-7.3 10.2C10 18.7 11 19 12 19c6 0 9-6 8-15z"/></svg>',
+};
 
 async function cargar() {
   try {
@@ -32,60 +41,84 @@ async function cargar() {
     if (D.config.nombre) document.title = D.config.nombre;
     renderTienda();
   } catch {
-    $('#tienda').innerHTML = '<div class="wrap"><div class="vacio" style="margin-top:40px"><h3>No se pudo cargar el catálogo</h3>Revisa tu conexión y recarga la página.</div></div>';
+    $('#tienda').innerHTML = '<div class="t-wrap"><div class="t-vacio" style="margin-top:40px"><b>No se pudo cargar el catálogo</b>Revisa tu conexión y recarga la página.</div></div>';
   }
 }
-
+const cantidadCarrito = () => itemsCarrito().reduce((s, x) => s + x.n, 0);
+/* Jabón destacado del banner: el primero disponible con foto, o el primero disponible */
+function destacado() {
+  const disp = visibles().filter(p => !p.agotado);
+  return disp.find(p => p.foto && !p.ejemplo) || disp.find(p => !p.ejemplo) || disp[0];
+}
 function renderTienda() {
-  const c = D.config, todos = visibles();
+  const c = D.config, todos = visibles(), dest = destacado();
   const usadas = Object.keys(PIELES).filter(k => todos.some(p => (p.pieles || []).includes(k)));
   const q = textoBusqueda.toLowerCase();
   const lista = todos.filter(p => (!filtroPiel || (p.pieles || []).includes(filtroPiel)) &&
     (!q || (p.nombre + ' ' + p.descripcion + ' ' + p.ingredientes).toLowerCase().includes(q)));
+  const n = cantidadCarrito();
   $('#tienda').innerHTML = `
-    <header class="wrap tienda-top">
-      <div class="marca-logo"><img class="logo" src="logo.png" alt="${esc(c.nombre)}" width="440" height="337"><h1 class="oculto">${esc(c.nombre)}</h1></div>
-      ${c.slogan ? `<p class="slogan">${esc(c.slogan)}</p>` : ''}
+    <header class="t-wrap t-top">
+      <img class="logo" src="logo.png" alt="" width="440" height="337">
+      <h1><small>Jabones artesanales</small>${esc(c.nombre || 'Catálogo')}</h1>
+      <button class="t-circulo" id="t-bolsa" aria-label="Ver mi pedido">${ICONO.bolsa}${n ? `<span class="t-cuenta">${n}</span>` : ''}</button>
     </header>
-    <div class="wrap">
-      ${todos.length ? `<div class="filtros" role="group" aria-label="Filtrar por tipo de piel">
-        <span class="filtro-lbl">Tu piel</span>
-        <button class="chip" data-piel="" aria-pressed="${!filtroPiel}">Todas</button>
-        ${usadas.map(k => `<button class="chip" data-piel="${k}" aria-pressed="${filtroPiel === k}">${PIELES[k]}</button>`).join('')}
-        <input class="buscar" id="buscar" type="search" placeholder="Buscar jabón o ingrediente" value="${esc(textoBusqueda)}" aria-label="Buscar">
+    <div class="t-wrap">
+      <label class="t-buscar">${ICONO.buscar}<input id="buscar" type="search" placeholder="Busca un jabón o ingrediente" value="${esc(textoBusqueda)}" aria-label="Buscar"></label>
+      ${dest && !q && !filtroPiel ? `<section class="t-hero">
+        <div>
+          <span class="etiqueta">${ICONO.hoja} Hecho a mano</span>
+          <h2>Cuida tu piel de forma natural</h2>
+          ${c.slogan ? `<p>${esc(c.slogan)}</p>` : ''}
+          <div class="t-acciones"><a class="t-pastilla-blanca" href="#productos">Ver todos los jabones</a></div>
+        </div>
+        <button class="t-destacado" data-ver="${dest.id}" aria-label="Ver ${esc(dest.nombre)}">
+          <div class="t-img">${fotoHTML(dest)}</div>
+          <span>${esc(dest.nombre)}</span><b>${din(dest.precio)}</b>
+          <span class="t-boton-redondo" aria-hidden="true">${ICONO.bolsa}</span>
+        </button>
+      </section>` : ''}
+      ${usadas.length ? `<div class="t-chips" role="group" aria-label="Filtrar por tipo de piel">
+        <button class="t-chip" data-piel="" aria-pressed="${!filtroPiel}">Todas las pieles</button>
+        ${usadas.map(k => `<button class="t-chip" data-piel="${k}" aria-pressed="${filtroPiel === k}">Piel ${PIELES[k].toLowerCase()}</button>`).join('')}
       </div>` : ''}
-      <div class="rejilla">
-        ${lista.map(tarjeta).join('') || `<div class="vacio" style="grid-column:1/-1">${todos.length
-          ? '<h3>Ningún jabón coincide</h3>Prueba con otro tipo de piel o borra la búsqueda.'
-          : '<h3>El catálogo se está preparando</h3>Muy pronto verás aquí los jabones disponibles.'}</div>`}
+      <div class="t-seccion-titulo" id="productos"><h3>${filtroPiel ? 'Para piel ' + PIELES[filtroPiel].toLowerCase() : q ? 'Resultados' : 'Nuestros jabones'}</h3><span>${lista.length} ${lista.length === 1 ? 'jabón' : 'jabones'}</span></div>
+      <div class="t-rejilla">
+        ${lista.map(tarjeta).join('') || `<div class="t-vacio">${todos.length
+          ? '<b>Ningún jabón coincide</b>Prueba con otro tipo de piel o borra la búsqueda.'
+          : '<b>El catálogo se está preparando</b>Muy pronto verás aquí los jabones disponibles.'}</div>`}
       </div>
     </div>
     ${barraPedido()}`;
   $$('[data-piel]').forEach(b => b.onclick = () => { filtroPiel = b.dataset.piel; renderTienda(); });
   const bus = $('#buscar');
-  if (bus) bus.oninput = () => { textoBusqueda = bus.value; const pos = bus.selectionStart; renderTienda(); const n = $('#buscar'); n.focus(); n.setSelectionRange(pos, pos); };
+  if (bus) bus.oninput = () => { textoBusqueda = bus.value; const pos = bus.selectionStart; renderTienda(); const nb = $('#buscar'); nb.focus(); nb.setSelectionRange(pos, pos); };
   $$('[data-ver]').forEach(b => b.onclick = () => verDetalle(b.dataset.ver));
-  $$('[data-mas]').forEach(b => b.onclick = () => cambiarCarrito(b.dataset.mas, 1));
-  $$('[data-menos]').forEach(b => b.onclick = () => cambiarCarrito(b.dataset.menos, -1));
+  $$('[data-mas]').forEach(b => b.onclick = e => { e.stopPropagation(); cambiarCarrito(b.dataset.mas, 1); });
+  $$('[data-menos]').forEach(b => b.onclick = e => { e.stopPropagation(); cambiarCarrito(b.dataset.menos, -1); });
+  $('#t-bolsa').onclick = () => itemsCarrito().length ? verPedido() : toast('Tu pedido está vacío. Agrega un jabón.');
   const bp = $('#ver-pedido'); if (bp) bp.onclick = verPedido;
 }
-function pieles(p) { return (p.pieles || []).map(k => `<li>${PIELES[k] || esc(k)}</li>`).join(''); }
+const pielesTexto = p => (p.pieles || []).map(k => PIELES[k] || k).join(' · ');
+function selloDe(p) {
+  return p.agotado ? '<span class="t-sello agotado">Agotado</span>' : p.ejemplo ? '<span class="t-sello ej">Ejemplo</span>' : p.peso ? `<span class="t-sello">${esc(p.peso)} g</span>` : '';
+}
+function contador(p, claro) {
+  const n = carrito[p.id] || 0;
+  return `<div class="t-contador${claro ? ' claro' : ''}"><button data-menos="${p.id}" aria-label="Quitar uno">−</button><span>${n}</span><button data-mas="${p.id}" aria-label="Agregar uno">+</button></div>`;
+}
 function tarjeta(p) {
   const n = carrito[p.id] || 0;
-  return `<article class="jab">
-    <button class="jab-foto" data-ver="${p.id}" aria-label="Ver detalles de ${esc(p.nombre)}">${fotoHTML(p)}
-      ${p.agotado ? '<span class="sello agotado">Agotado</span>' : p.ejemplo ? '<span class="sello">Ejemplo</span>' : ''}</button>
-    <div class="jab-info">
-      <h3>${esc(p.nombre)}</h3>
-      <p class="jab-desc">${esc(p.descripcion)}</p>
-      <ul class="pieles" aria-label="Tipos de piel">${pieles(p)}</ul>
-      <div class="jab-pie">
-        <div><span class="precio num">${din(p.precio)}</span>${p.peso ? `<span class="peso">${esc(p.peso)} g</span>` : ''}</div>
-        ${p.agotado ? '<span class="muted small">Sin existencias</span>' : n
-          ? `<div class="paso"><button data-menos="${p.id}" aria-label="Quitar uno">−</button><span class="num">${n}</span><button data-mas="${p.id}" aria-label="Agregar uno">+</button></div>`
-          : `<button class="btn chico pri" data-mas="${p.id}">Agregar</button>`}
-      </div>
-    </div></article>`;
+  return `<article class="t-card">
+    <button class="t-abrir" data-ver="${p.id}" aria-label="Ver detalles de ${esc(p.nombre)}">
+      <div class="t-img">${fotoHTML(p)}${selloDe(p)}</div>
+      <h4>${esc(p.nombre)}</h4>
+      ${p.pieles && p.pieles.length ? `<div class="t-pieles">${esc(pielesTexto(p))}</div>` : ''}
+      <div class="t-precio">${din(p.precio)}</div>
+    </button>
+    <div class="t-pie">${p.agotado ? `<button class="t-boton-redondo" disabled aria-label="Agotado">${ICONO.bolsa}</button>`
+      : n ? contador(p) : `<button class="t-boton-redondo" data-mas="${p.id}" aria-label="Agregar ${esc(p.nombre)} al pedido">${ICONO.bolsa}</button>`}</div>
+  </article>`;
 }
 function itemsCarrito() {
   return Object.entries(carrito).map(([id, n]) => ({p: prod(id), n})).filter(x => x.p && x.n > 0 && !x.p.agotado && x.p.visible !== false);
@@ -93,28 +126,40 @@ function itemsCarrito() {
 function barraPedido() {
   const it = itemsCarrito(); if (!it.length) return '';
   const cant = it.reduce((s, x) => s + x.n, 0), tot = it.reduce((s, x) => s + x.n * x.p.precio, 0);
-  return `<div class="barra-pedido"><button class="btn pri" id="ver-pedido">Ver mi pedido · ${cant} ${cant === 1 ? 'jabón' : 'jabones'} · <span class="num">${din(tot)}</span></button></div>`;
+  return `<div class="t-barra"><button id="ver-pedido">${ICONO.bolsa.replace('<svg', '<svg width="20" height="20"')} Ver mi pedido · ${cant} <span class="t-total">${din(tot)}</span></button></div>`;
 }
 function cambiarCarrito(id, d) {
   carrito[id] = Math.max(0, (carrito[id] || 0) + d);
   if (!carrito[id]) delete carrito[id];
   guardarLocal('jab_carrito', carrito);
-  renderTienda();
-  if ($('#dlg').open && $('#dlg [data-pedido]')) verPedido();
+  const y = scrollY; renderTienda(); scrollTo(0, y);
+  const dlg = $('#dlg');
+  if (dlg.open && $('#dlg [data-pedido]')) verPedido();
+  else if (dlg.open && $('#dlg [data-detalle]')) verDetalle(id);
 }
 function verDetalle(id) {
   const p = prod(id); if (!p) return;
-  const bloque = (t, v) => v ? `<div class="det-bloque"><h4>${t}</h4><p>${esc(v)}</p></div>` : '';
-  abrir(`<div class="dlg">
-    <div class="dlg-cab"><h2>${esc(p.nombre)}</h2><button class="cerrar" data-cerrar aria-label="Cerrar">×</button></div>
-    <div class="dlg-cuerpo">
-      <div class="det-foto">${fotoHTML(p)}</div>
-      <ul class="pieles">${pieles(p)}</ul>
-      ${bloque('Qué es', p.descripcion)}${bloque('Ingredientes', p.ingredientes)}${bloque('Cómo usarlo', p.uso)}
-      <div class="det-bloque"><h4>Precio</h4><p class="num"><b>${din(p.precio)}</b>${p.peso ? ` · ${esc(p.peso)} g` : ''}</p></div>
-    </div>
-    <div class="dlg-pie">${p.agotado ? '<span class="muted">Agotado por ahora</span>' : `<button class="btn pri" id="det-add">Agregar al pedido</button>`}</div></div>`,
-    d => { const b = $('#det-add', d); if (b) b.onclick = () => { cambiarCarrito(p.id, 1); d.close(); toast(p.nombre + ' agregado'); }; });
+  const n = carrito[p.id] || 0;
+  const bloque = (t, v) => v ? `<details><summary>${t}</summary><p>${esc(v)}</p></details>` : '';
+  abrir(`<div class="t-det" data-detalle>
+    <div class="t-det-foto"><div class="t-img">${fotoHTML(p)}</div>
+      <button class="t-circulo claro" data-cerrar aria-label="Volver">${ICONO.atras}</button></div>
+    <div class="t-hoja">
+      <h2>${esc(p.nombre)}</h2>
+      ${(p.pieles || []).length ? `<div class="t-tags">${p.pieles.map(k => `<span>Piel ${esc((PIELES[k] || k).toLowerCase())}</span>`).join('')}</div>` : ''}
+      ${p.descripcion ? `<p>${esc(p.descripcion)}</p>` : ''}
+      ${bloque('Ingredientes', p.ingredientes)}${bloque('Cómo usarlo', p.uso)}
+      <div class="t-fila-precio"><div><b>${din(p.precio)}</b>${p.peso ? `<small>${esc(p.peso)} g</small>` : ''}</div>
+        ${!p.agotado && n ? contador(p, true) : ''}</div>
+      ${p.agotado ? '<button class="t-boton-negro" disabled>Agotado por ahora</button>'
+        : n ? `<button class="t-boton-negro" id="det-ver">Ver mi pedido · ${din(itemsCarrito().reduce((s, x) => s + x.n * x.p.precio, 0))}</button>`
+        : `<button class="t-boton-negro" id="det-add">${ICONO.bolsa.replace('<svg', '<svg width="20" height="20"')} Agregar · ${din(p.precio)}</button>`}
+    </div></div>`, d => {
+    const b = $('#det-add', d); if (b) b.onclick = () => { cambiarCarrito(p.id, 1); toast(p.nombre + ' agregado'); };
+    const v = $('#det-ver', d); if (v) v.onclick = verPedido;
+    $$('[data-mas]', d).forEach(x => x.onclick = () => cambiarCarrito(x.dataset.mas, 1));
+    $$('[data-menos]', d).forEach(x => x.onclick = () => cambiarCarrito(x.dataset.menos, -1));
+  });
 }
 function mensajePedido(nombre, nota) {
   const it = itemsCarrito(), tot = it.reduce((s, x) => s + x.n * x.p.precio, 0);
@@ -129,20 +174,19 @@ function verPedido() {
   const tot = it.reduce((s, x) => s + x.n * x.p.precio, 0);
   const num = (D.config.whatsapp || '').replace(/\D/g, '');
   const prev = {nombre: leerLocal('jab_nombre', ''), nota: $('#ped-nota')?.value || ''};
-  abrir(`<div class="dlg" data-pedido>
-    <div class="dlg-cab"><h2>Tu pedido</h2><button class="cerrar" data-cerrar aria-label="Cerrar">×</button></div>
-    <div class="dlg-cuerpo">
-      <div>${it.map(x => `<div class="linea-ped"><div><b>${esc(x.p.nombre)}</b><div class="muted small num">${din(x.p.precio)} c/u</div></div>
-        <div class="paso"><button data-menos="${x.p.id}" aria-label="Quitar uno">−</button><span class="num">${x.n}</span><button data-mas="${x.p.id}" aria-label="Agregar uno">+</button></div>
-        <b class="num">${din(x.n * x.p.precio)}</b></div>`).join('')}</div>
-      <div class="total-ped"><span>Total</span><span class="num">${din(tot)}</span></div>
-      <label class="campo"><span>Tu nombre</span><input id="ped-nombre" autocomplete="name" value="${esc(prev.nombre)}" placeholder="Para saber quién pide"></label>
-      <label class="campo"><span>Nota (opcional)</span><input id="ped-nota" value="${esc(prev.nota)}" placeholder="Entrega, dirección, horario…"></label>
-      ${num ? `<p class="wa-num">El pedido se abre en WhatsApp con el número <b class="num">+${esc(num)}</b>. Solo tienes que enviarlo.</p>` : ''}
-    </div>
-    <div class="dlg-pie">
-      <button class="btn" id="ped-copiar">Copiar pedido</button>
-      ${num ? `<a class="btn pri" id="ped-wa" target="_blank" rel="noopener" href="#">Enviar por WhatsApp</a>` : '<span class="muted small">El número de WhatsApp aún no está configurado.</span>'}
+  abrir(`<div class="t-det" data-pedido>
+    <div class="t-ped-cab"><button class="t-circulo claro" data-cerrar aria-label="Volver">${ICONO.atras}</button><h2>Tu pedido</h2></div>
+    <div class="t-hoja" style="margin-top:16px">
+      <div>${it.map(x => `<div class="t-linea"><div class="t-img">${fotoHTML(x.p)}</div>
+        <div><b>${esc(x.p.nombre)}</b><small>${din(x.p.precio)} c/u</small></div>
+        ${contador(x.p, true)}</div>`).join('')}</div>
+      <div class="t-total-ped"><span>Total</span><b>${din(tot)}</b></div>
+      <label class="t-campo">Tu nombre<input id="ped-nombre" autocomplete="name" value="${esc(prev.nombre)}" placeholder="Para saber quién pide"></label>
+      <label class="t-campo">Nota (opcional)<input id="ped-nota" value="${esc(prev.nota)}" placeholder="Entrega, dirección, horario…"></label>
+      ${num ? `<a class="t-boton-negro" id="ped-wa" target="_blank" rel="noopener" href="#">Enviar pedido por WhatsApp</a>
+        <p style="font-size:13px;text-align:center">Se abre WhatsApp con el número <b>+${esc(num)}</b>. Solo tienes que enviarlo.</p>`
+        : '<p>El número de WhatsApp aún no está configurado.</p>'}
+      <button class="t-boton-borde" id="ped-copiar">Copiar pedido</button>
     </div></div>`, d => {
     const actual = () => mensajePedido($('#ped-nombre', d).value.trim(), $('#ped-nota', d).value.trim());
     const wa = $('#ped-wa', d);

@@ -1,0 +1,130 @@
+/* Catálogo público, estilo app: banner destacado en degradado verde (del logo), tarjetas grandes
+   redondeadas, chips en píldora, botones negros redondos y barra de pedido flotante. Siempre en claro. */
+body.tienda{
+  --t-fondo:#e8ece3; --t-tarjeta:#f7f8f4; --t-blanco:#ffffff; --t-tinta:#141a14; --t-suave:#6b7466; --t-linea:#d9ded3;
+  --t-verde:#4f7d47; --t-verde-osc:#1f3a1c; --t-verde-claro:#9cc27c; --t-negro:#141a14;
+  --t-sans:"Plus Jakarta Sans","Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:light;background:var(--t-fondo);color:var(--t-tinta);font-family:var(--t-sans);
+}
+.tienda *{font-family:inherit}
+.t-wrap{max-width:1120px;margin:0 auto;padding-inline:16px}
+
+/* Barra superior */
+.t-top{display:flex;align-items:center;gap:12px;padding-block:18px 10px}
+.t-top .logo{width:74px;height:auto;aspect-ratio:440/337;flex:none}
+.t-top h1{font-size:clamp(24px,5vw,30px);font-weight:800;letter-spacing:-.02em;flex:1;min-width:0;font-family:var(--t-sans);line-height:1.1}
+.t-top h1 small{display:block;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--t-verde);margin-bottom:2px}
+.t-circulo{width:46px;height:46px;border-radius:50%;border:none;background:var(--t-negro);color:#fff;display:grid;place-items:center;cursor:pointer;position:relative;flex:none}
+.t-circulo.claro{background:var(--t-blanco);color:var(--t-tinta)}
+.t-circulo svg{width:20px;height:20px}
+.t-circulo .t-cuenta{position:absolute;top:-3px;right:-3px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:var(--t-verde-claro);color:var(--t-negro);font-size:11px;font-weight:800;display:grid;place-items:center}
+
+/* Buscador */
+.t-buscar{display:flex;align-items:center;gap:10px;background:var(--t-blanco);border-radius:999px;padding:0 18px;height:50px;margin-block:6px 4px}
+.t-buscar svg{width:18px;height:18px;color:var(--t-suave);flex:none}
+.t-buscar input{border:none;outline:none;background:transparent;flex:1;min-width:0;font-size:15px;color:var(--t-tinta)}
+
+/* Banner destacado */
+.t-hero{margin-block:16px 8px;border-radius:30px;padding:26px 22px 22px;color:#fff;position:relative;overflow:hidden;
+  background:linear-gradient(160deg,var(--t-verde-osc) 0%,#3c6533 52%,var(--t-verde-claro) 100%);
+  display:grid;grid-template-columns:1fr;gap:18px;align-items:center}
+.t-hero .etiqueta{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;letter-spacing:.04em;opacity:.9}
+.t-hero h2{font-family:var(--t-sans);font-weight:800;font-size:clamp(28px,7vw,46px);line-height:1.05;letter-spacing:-.02em;margin:8px 0 0;text-wrap:balance}
+.t-hero p{margin:10px 0 0;opacity:.85;font-size:15px;max-width:42ch}
+.t-hero .t-destacado{background:var(--t-blanco);color:var(--t-tinta);border-radius:24px;padding:12px 12px 26px;text-align:center;position:relative;cursor:pointer;border:none;width:100%;max-width:260px;justify-self:center;font:inherit}
+.t-hero .t-destacado .t-img{border-radius:18px}
+.t-hero .t-destacado b{display:block;font-size:20px;margin-top:2px}
+.t-hero .t-destacado span{font-size:14px;color:var(--t-suave)}
+.t-hero .t-destacado .t-boton-redondo{position:absolute;left:50%;bottom:-20px;transform:translateX(-50%)}
+.t-hero .t-acciones{margin-top:18px}
+.t-pastilla-blanca{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:48px;padding:0 26px;border-radius:999px;border:none;background:var(--t-blanco);color:var(--t-tinta);font-weight:700;font-size:15px;cursor:pointer;text-decoration:none}
+@media (min-width:760px){
+  .t-hero{grid-template-columns:1.2fr 1fr;padding:44px 48px;gap:36px}
+  .t-hero .t-destacado{max-width:320px}
+}
+
+/* Chips de tipo de piel */
+.t-chips{display:flex;gap:8px;overflow-x:auto;padding-block:16px 6px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.t-chips::-webkit-scrollbar{display:none}
+.t-chip{flex:none;height:40px;padding:0 18px;border-radius:999px;border:none;background:var(--t-blanco);color:var(--t-tinta);font-weight:600;font-size:14px;cursor:pointer}
+.t-chip[aria-pressed="true"]{background:var(--t-negro);color:#fff}
+.t-seccion-titulo{display:flex;justify-content:space-between;align-items:baseline;margin-top:14px}
+.t-seccion-titulo h3{font-family:var(--t-sans);font-size:20px;font-weight:800;letter-spacing:-.01em}
+.t-seccion-titulo span{color:var(--t-suave);font-size:13px}
+
+/* Tarjetas de producto */
+.t-rejilla{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 12px;padding-block:14px 130px}
+@media (min-width:640px){.t-rejilla{grid-template-columns:repeat(3,minmax(0,1fr));gap:22px 18px}}
+@media (min-width:980px){.t-rejilla{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.t-card{background:var(--t-tarjeta);border-radius:26px;padding:10px 10px 30px;position:relative;text-align:center;min-width:0;margin-bottom:18px;
+  box-shadow:0 1px 0 rgba(255,255,255,.7) inset,0 10px 24px -18px rgba(20,26,20,.35);transition:transform .2s ease}
+@media (hover:hover) and (prefers-reduced-motion:no-preference){.t-card:hover{transform:translateY(-3px)}}
+.t-card .t-abrir{all:unset;cursor:pointer;display:block;width:100%;box-sizing:border-box}
+.t-card .t-abrir:focus-visible{outline:2px solid var(--t-verde);outline-offset:4px;border-radius:20px}
+.t-img{aspect-ratio:1/1;border-radius:20px;overflow:hidden;position:relative;background:#e3e8dc}
+.t-img img{width:100%;height:100%;object-fit:cover;display:block}
+.t-img .pastilla{inset:20% 18%;border-radius:22%;font-size:clamp(26px,6vw,38px)}
+.t-sello{position:absolute;top:10px;right:10px;height:24px;padding:0 9px;border-radius:999px;background:var(--t-negro);color:#fff;font-size:11px;font-weight:700;display:grid;place-items:center}
+.t-sello.agotado{background:#b23a3a}
+.t-sello.ej{background:var(--t-blanco);color:var(--t-tinta)}
+.t-card h4{margin:12px 6px 0;font-size:15px;font-weight:600;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.t-card .t-pieles{margin:4px 6px 0;font-size:12px;color:var(--t-suave);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.t-card .t-precio{margin-top:6px;font-size:19px;font-weight:800;font-variant-numeric:tabular-nums}
+.t-card .t-precio small{font-size:12px;font-weight:500;color:var(--t-suave);margin-left:4px}
+.t-card .t-pie{position:absolute;left:50%;bottom:-20px;transform:translateX(-50%)}
+
+/* Botones redondos negros y contador */
+.t-boton-redondo{width:44px;height:44px;border-radius:50%;border:3px solid var(--t-fondo);background:var(--t-negro);color:#fff;display:grid;place-items:center;cursor:pointer;box-shadow:0 6px 14px -6px rgba(0,0,0,.5)}
+.t-boton-redondo svg{width:18px;height:18px}
+.t-boton-redondo:disabled{background:#c9cec3;color:#fff;cursor:not-allowed;box-shadow:none}
+.t-contador{display:inline-flex;align-items:center;gap:2px;height:44px;padding:0 4px;border-radius:999px;background:var(--t-negro);color:#fff;border:3px solid var(--t-fondo);box-shadow:0 6px 14px -6px rgba(0,0,0,.5)}
+.t-contador button{width:34px;height:34px;border:none;border-radius:50%;background:transparent;color:#fff;font-size:20px;line-height:1;cursor:pointer}
+.t-contador span{min-width:20px;font-weight:800;font-variant-numeric:tabular-nums}
+.t-contador.claro{background:var(--t-blanco);color:var(--t-tinta);border-color:var(--t-linea);box-shadow:none}
+.t-contador.claro button{color:var(--t-tinta)}
+
+/* Barra de pedido flotante */
+.t-barra{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(14px + env(safe-area-inset-bottom,0px));display:flex;justify-content:center;pointer-events:none;z-index:6;
+  background:linear-gradient(to top,var(--t-fondo) 55%,transparent)}
+.t-barra button{pointer-events:auto;display:flex;align-items:center;gap:12px;height:58px;padding:0 10px 0 22px;border-radius:999px;border:none;background:var(--t-negro);color:#fff;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 14px 30px -12px rgba(0,0,0,.55)}
+.t-barra .t-total{background:var(--t-verde-claro);color:var(--t-negro);border-radius:999px;height:40px;padding:0 16px;display:grid;place-items:center;font-variant-numeric:tabular-nums}
+
+/* Detalle del jabón y pedido (diálogos) */
+.tienda dialog{border-radius:30px;background:var(--t-fondo);color:var(--t-tinta);width:min(480px,calc(100vw - 20px));padding:0}
+.tienda dialog::backdrop{background:rgba(20,26,20,.55)}
+@media (max-width:560px){.tienda dialog{width:100vw;max-width:100vw;max-height:100dvh;height:100dvh;margin:0;border-radius:0}}
+.t-det{display:flex;flex-direction:column;min-height:100%;max-height:100dvh}
+.t-det-foto{position:relative;padding:16px 16px 0}
+.t-det-foto .t-img{aspect-ratio:1/1;border-radius:26px;background:#dfe5d8}
+.t-det-foto .t-circulo{position:absolute;top:28px;left:28px;box-shadow:0 4px 12px rgba(0,0,0,.15)}
+.t-hoja{background:var(--t-blanco);border-radius:30px 30px 0 0;margin-top:-26px;position:relative;padding:24px 22px calc(20px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px;flex:1;overflow:auto}
+@media (min-width:561px){.t-hoja{border-radius:30px}}
+.t-hoja h2{font-family:var(--t-sans);font-size:24px;font-weight:800;letter-spacing:-.01em}
+.t-hoja p{margin:0;color:var(--t-suave);line-height:1.55}
+.t-hoja .t-tags{display:flex;flex-wrap:wrap;gap:6px}
+.t-hoja .t-tags span{background:#eef2ea;color:var(--t-verde-osc);border-radius:999px;padding:5px 12px;font-size:13px;font-weight:600}
+.t-hoja details{border-top:1px solid var(--t-linea);padding-top:12px}
+.t-hoja summary{cursor:pointer;font-weight:700;list-style:none;display:flex;justify-content:space-between}
+.t-hoja summary::after{content:"+";font-size:20px;line-height:1}
+.t-hoja details[open] summary::after{content:"−"}
+.t-hoja details p{margin-top:8px;white-space:pre-line}
+.t-fila-precio{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:4px}
+.t-fila-precio b{font-size:28px;font-weight:800;font-variant-numeric:tabular-nums}
+.t-fila-precio small{font-size:13px;color:var(--t-suave);margin-left:6px;font-weight:500}
+.t-boton-negro{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;height:56px;border-radius:999px;border:none;background:var(--t-negro);color:#fff;font-size:16px;font-weight:700;cursor:pointer;text-decoration:none}
+.t-boton-negro:disabled{background:#c9cec3;cursor:not-allowed}
+.t-boton-borde{display:flex;align-items:center;justify-content:center;width:100%;height:50px;border-radius:999px;border:1.5px solid var(--t-linea);background:transparent;color:var(--t-tinta);font-size:15px;font-weight:600;cursor:pointer}
+.t-ped-cab{display:flex;align-items:center;gap:12px;padding:18px 18px 0}
+.t-ped-cab h2{font-family:var(--t-sans);font-size:24px;font-weight:800;flex:1}
+.t-linea{display:grid;grid-template-columns:64px 1fr auto;gap:12px;align-items:center;padding-block:10px;border-bottom:1px solid var(--t-linea)}
+.t-linea .t-img{border-radius:16px}
+.t-linea b{display:block;font-size:15px}
+.t-linea small{color:var(--t-suave)}
+.t-campo{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:600}
+.t-campo input{height:50px;border-radius:16px;border:1.5px solid var(--t-linea);background:var(--t-fondo);padding:0 16px;font-size:15px;color:var(--t-tinta)}
+.t-total-ped{display:flex;justify-content:space-between;align-items:baseline;font-size:15px;color:var(--t-suave)}
+.t-total-ped b{font-size:26px;color:var(--t-tinta);font-variant-numeric:tabular-nums}
+.t-vacio{background:var(--t-tarjeta);border-radius:26px;padding:40px 20px;text-align:center;color:var(--t-suave);grid-column:1/-1}
+.t-vacio b{display:block;color:var(--t-tinta);font-size:18px;margin-bottom:6px}
+.tienda .toast{background:var(--t-negro);bottom:calc(92px + env(safe-area-inset-bottom,0px))}
+.tienda :focus-visible{outline:2px solid var(--t-verde);outline-offset:2px}
