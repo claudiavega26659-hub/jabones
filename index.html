@@ -44,7 +44,7 @@ function renderTienda() {
     (!q || (p.nombre + ' ' + p.descripcion + ' ' + p.ingredientes).toLowerCase().includes(q)));
   $('#tienda').innerHTML = `
     <header class="wrap tienda-top">
-      <div class="marca"><div class="marca-sello" aria-hidden="true">${esc((c.nombre || 'J')[0])}</div><h1>${esc(c.nombre)}</h1></div>
+      <div class="marca-logo"><img class="logo" src="logo.png" alt="${esc(c.nombre)}" width="440" height="337"><h1 class="oculto">${esc(c.nombre)}</h1></div>
       ${c.slogan ? `<p class="slogan">${esc(c.slogan)}</p>` : ''}
     </header>
     <div class="wrap">

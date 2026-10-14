@@ -271,10 +271,10 @@ async function nombreNegocio() {
 }
 function marcoAcceso(titulo, cuerpo) {
   return `<main class="wrap seccion" style="max-width:440px;padding-top:12vh">
-    <div class="marca"><div class="marca-sello" aria-hidden="true" id="m-sello">J</div><h1 id="m-nombre" style="font-size:26px">Panel</h1></div>
+    <div class="marca-logo"><img class="logo" src="logo.png" alt="" width="440" height="337"><h1 class="oculto" id="m-nombre">Panel</h1></div>
     <section class="panel" style="display:flex;flex-direction:column;gap:14px"><h3 style="margin:0">${titulo}</h3>${cuerpo}</section></main>`;
 }
-async function pintarNombre() { const n = await nombreNegocio(); if (n && $('#m-nombre')) { $('#m-nombre').textContent = n; $('#m-sello').textContent = n[0]; document.title = 'Panel · ' + n; } }
+async function pintarNombre() { const n = await nombreNegocio(); if (n && $('#m-nombre')) { $('#m-nombre').textContent = n; document.title = 'Panel · ' + n; } }
 function pantallaEntrar(aviso = '') {
   setTimeout(() => { const m = $('#e-msg'); if (m && aviso) m.textContent = aviso; }, 0);
   $('#admin').innerHTML = marcoAcceso('Entrar al panel', `
@@ -397,7 +397,7 @@ function renderAdmin() {
   if (!CFG) return inicio();
   const tabs = {resumen:'Resumen', catalogo:'Catálogo', ventas:'Ventas', produccion:'Producción', compras:'Compras', ajustes:'Ajustes'};
   $('#admin').innerHTML = `<div class="adm-top"><div class="wrap">
-      <h1><span class="etq">${ROLES[ROL] || 'Administración'}</span>${esc(D.config.nombre)}</h1>
+      <img class="logo-mini" src="logo.png" alt="" width="58" height="44"><h1><span class="etq">${ROLES[ROL] || 'Administración'}</span>${esc(D.config.nombre)}</h1>
       <button class="btn chico" id="a-act">Sincronizar</button>
       <button class="btn chico plano" id="a-salir">Salir</button>
       <span class="sinc" id="sinc" aria-live="polite"></span></div>

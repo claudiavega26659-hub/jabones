@@ -196,3 +196,12 @@ a{color:var(--accent)}
   .reg .der{gap:4px}
   dialog{width:calc(100vw - 16px);max-height:calc(100dvh - 16px)}
 }
+
+/* Logo del negocio */
+.marca-logo{display:flex;justify-content:center}
+.marca-logo .logo{width:min(280px,72vw);height:auto;display:block;filter:drop-shadow(0 4px 10px rgba(29,37,32,.12))}
+.tienda-top .marca-logo{justify-content:flex-start}
+.tienda-top .slogan{margin-top:14px}
+.logo-mini{width:58px;height:auto;flex:none}
+.oculto{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+@media (max-width:720px){.tienda-top .marca-logo{justify-content:center}.tienda-top .slogan{text-align:center;margin-inline:auto}.logo-mini{width:46px}}

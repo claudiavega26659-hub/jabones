@@ -1,8 +1,8 @@
 /* Service worker: permite abrir la app sin internet.
    Archivos de la app: primero la red (para recibir actualizaciones) y, sin conexión, la copia guardada.
    Fotos y tipografías: primero la copia guardada. GitHub (api.github.com) nunca se guarda aquí. */
-const CACHE = 'jabones-v1';
-const BASE = ['admin', 'comun.js', 'estilos.css', 'manifest.webmanifest', 'icono-192.png', 'icono-512.png'];
+const CACHE = 'jabones-v2';
+const BASE = ['admin', 'comun.js', 'estilos.css', 'manifest.webmanifest', 'icono-192.png', 'icono-512.png', 'logo.png'];
 
 // Una respuesta que vino de una redirección no se puede usar para abrir la página: se copia sin ella
 async function limpiar(r) {
