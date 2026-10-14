@@ -56,6 +56,48 @@ async function entrar(pass) {
   }
   return false;
 }
+/* ======================= Entrar con huella =======================
+   El celular guarda una llave de acceso (passkey) protegida por la huella. Al usarla entrega un secreto (extensión PRF)
+   con el que se cifra la llave del panel en este dispositivo, junto con el rol (administradora o dueña). */
+const huellaGuardada = () => leerLocal('jab_huella', null);
+async function huellaDisponible() {
+  try { return !!(window.PublicKeyCredential && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()); } catch { return false; }
+}
+const salidaPRF = c => { const r = c.getClientExtensionResults(); return r && r.prf && r.prf.results && r.prf.results.first; };
+async function activarHuella() {
+  const sal = azar(32), nombre = (D.config && D.config.nombre) || 'Panel';
+  const cred = await navigator.credentials.create({publicKey:{
+    challenge:azar(32), rp:{name:nombre, id:location.hostname},
+    user:{id:azar(16), name:nombre + ' · ' + (ROLES[ROL] || ''), displayName:nombre + ' · ' + (ROLES[ROL] || '')},
+    pubKeyCredParams:[{type:'public-key', alg:-7}, {type:'public-key', alg:-257}],
+    authenticatorSelection:{authenticatorAttachment:'platform', userVerification:'required', residentKey:'preferred'},
+    timeout:60000, extensions:{prf:{eval:{first:sal}}},
+  }});
+  const ext = cred.getClientExtensionResults();
+  if (!ext.prf || ext.prf.enabled === false) throw new Error('sin_prf');
+  let salida = salidaPRF(cred);
+  if (!salida) {   // algunos celulares solo entregan el secreto al usar la llave, no al crearla
+    const a = await navigator.credentials.get({publicKey:{challenge:azar(32), allowCredentials:[{type:'public-key', id:cred.rawId}], userVerification:'required', timeout:60000, extensions:{prf:{eval:{first:sal}}}}});
+    salida = salidaPRF(a);
+  }
+  if (!salida) throw new Error('sin_prf');
+  const envuelta = await aesCifrar(await importarLlave(new Uint8Array(salida)), LLAVE);
+  guardarLocal('jab_huella', {id:aB64u8(new Uint8Array(cred.rawId)), sal:aB64u8(sal), rol:ROL, ...envuelta});
+}
+async function entrarConHuella() {
+  const hu = huellaGuardada(); if (!hu) return false;
+  const a = await navigator.credentials.get({publicKey:{challenge:azar(32), allowCredentials:[{type:'public-key', id:deB64u8(hu.id)}], userVerification:'required', timeout:60000, extensions:{prf:{eval:{first:deB64u8(hu.sal)}}}}});
+  const salida = salidaPRF(a); if (!salida) throw new Error('sin_prf');
+  const raw = await aesDescifrar(await importarLlave(new Uint8Array(salida)), hu);
+  LLAVE = raw; CFG = JSON.parse(dec.decode(await aesDescifrar(await importarLlave(raw), ACCESO.datos))); ROL = hu.rol || 'duena';
+  return true;
+}
+function errorHuella(e) {
+  if (e && e.name === 'NotAllowedError') return 'Se canceló o no se reconoció la huella.';
+  if (e && e.message === 'sin_prf') return 'Este celular o navegador no permite entrar con huella. Actualiza Chrome o sigue usando la contraseña.';
+  if (e && e.name === 'OperationError') return 'No se pudo abrir con la huella. Entra con tu contraseña y vuelve a activarla en Ajustes.';
+  return 'No se pudo usar la huella' + (e && e.message ? ': ' + e.message : '.');
+}
 function salir() { LLAVE = CFG = ROL = null; D = catalogoVacio(); DATOS = VACIO_DATOS(); COLA = []; inicio(); }
 const catalogoVacio = () => ({config:{nombre:'Jabones Artesanales', slogan:'', whatsapp:'', moneda:'$', intro:'Hola, quiero hacer este pedido:'}, productos:[]});
 /* Copia de trabajo en el celular: catálogo, datos, cambios pendientes de subir (COLA) y fotos guardadas */
@@ -277,9 +319,11 @@ function marcoAcceso(titulo, cuerpo) {
 async function pintarNombre() { const n = await nombreNegocio(); if (n && $('#m-nombre')) { $('#m-nombre').textContent = n; document.title = 'Panel · ' + n; } }
 function pantallaEntrar(aviso = '') {
   setTimeout(() => { const m = $('#e-msg'); if (m && aviso) m.textContent = aviso; }, 0);
+  const conHuella = !!huellaGuardada();
   $('#admin').innerHTML = marcoAcceso('Entrar al panel', `
+    ${conHuella ? '<button type="button" class="btn pri" id="e-huella" style="min-height:52px;font-size:16px">👆 Entrar con huella</button><p class="ayuda" style="margin:0;text-align:center">o con tu contraseña:</p>' : ''}
     <form id="f-ent" style="display:flex;flex-direction:column;gap:14px">
-      <label class="campo"><span>Contraseña</span><input id="e-pass" type="password" required autocomplete="current-password" autofocus></label>
+      <label class="campo"><span>Contraseña</span><input id="e-pass" type="password" required autocomplete="current-password" ${conHuella ? '' : 'autofocus'}></label>
       <button class="btn pri">Entrar</button>
       <p class="ayuda" id="e-msg" aria-live="polite" style="margin:0"></p>
     </form>
@@ -291,6 +335,14 @@ function pantallaEntrar(aviso = '') {
     if (await entrar($('#e-pass').value)) { cargarTodo(); return; }
     b.disabled = false; msg.textContent = 'Contraseña incorrecta.'; $('#e-pass').select();
   };
+  if (conHuella) {
+    const usar = async () => {
+      const msg = $('#e-msg'); msg.textContent = 'Pon tu dedo en el sensor…';
+      try { if (await entrarConHuella()) cargarTodo(); } catch (e) { msg.textContent = errorHuella(e); }
+    };
+    $('#e-huella').onclick = usar;
+    setTimeout(usar, 400);   // se ofrece sola al abrir; si se cancela, queda el botón
+  }
 }
 function pantallaSinConfigurar() {
   $('#admin').innerHTML = marcoAcceso('Este dispositivo todavía no está configurado', `
@@ -341,7 +393,7 @@ function pantallaConexion() {
   $('#c-volver').onclick = () => editando ? renderAdmin() : inicio();
   const bo = $('#c-borrar');
   if (bo) bo.onclick = () => confirmar('Borrar el acceso de este dispositivo', 'Se borrarán la conexión y las contraseñas guardadas en este navegador. Los datos del negocio no se tocan. Para volver a entrar habrá que configurarlo de nuevo.', 'Borrar acceso',
-    () => { borrarLocal('jab_acceso'); borrarLocal('jab_github'); ACCESO = null; salir(); });
+    () => { borrarLocal('jab_acceso'); borrarLocal('jab_github'); borrarLocal('jab_huella'); ACCESO = null; salir(); });
   $('#f-con').onsubmit = async e => {
     e.preventDefault();
     const msg = $('#c-msg');
@@ -771,6 +823,10 @@ function secAjustes(s) {
     ${ROL === 'admin' ? `<section class="panel" style="max-width:620px;display:flex;flex-direction:column;gap:10px"><h3 style="margin:0">Dar acceso a la dueña</h3>
       <p class="ayuda" style="margin:0">Crea un link para que ella entre desde su celular sin que tengas que configurarlo tú. Al abrirlo solo le pide su contraseña.</p>
       <div><button class="btn pri" id="a-link">Crear link de acceso</button></div></section>` : ''}
+    <section class="panel" style="max-width:620px;display:flex;flex-direction:column;gap:10px"><h3 style="margin:0">Entrar con huella</h3>
+      <p class="ayuda" style="margin:0">${huellaGuardada() ? '<b>Activada en este dispositivo.</b> Al abrir el panel entras con tu huella; la contraseña sigue funcionando.' : 'Usa la huella de este celular en lugar de escribir la contraseña. Se activa en cada dispositivo por separado.'}</p>
+      <div>${huellaGuardada() ? '<button class="btn" id="a-hu-off">Desactivar</button>' : '<button class="btn pri" id="a-hu-on">Activar entrada con huella</button>'}</div>
+      <p class="ayuda" id="a-hu-m" style="margin:0"></p></section>
     <section class="panel" style="max-width:620px;display:flex;flex-direction:column;gap:10px"><h3 style="margin:0">Sincronización y respaldo</h3>
       <p class="ayuda" style="margin:0">Todo se guarda en este celular y, cuando hay internet, también en la nube con su historial. Si cambias de celular, al entrar se descargan tus datos.</p>
       <p class="ayuda" style="margin:0" id="a-estado"></p>
@@ -782,6 +838,14 @@ function secAjustes(s) {
   const bg = $('#a-gh'); if (bg) bg.onclick = pantallaConexion;
   const bk = $('#a-link'); if (bk) bk.onclick = mostrarLinkAcceso;
   $('#a-sinc').onclick = () => sincronizar(true);
+  const hon = $('#a-hu-on'), hoff = $('#a-hu-off');
+  if (hon) hon.onclick = async () => {
+    const m = $('#a-hu-m');
+    if (!(await huellaDisponible())) { m.textContent = 'Este dispositivo no tiene huella o desbloqueo de pantalla disponible para apps web.'; return; }
+    m.textContent = 'Sigue las indicaciones del celular…';
+    try { await activarHuella(); toast('Listo: la próxima vez entra con tu huella.'); renderSeccion(); } catch (e) { m.textContent = errorHuella(e); }
+  };
+  if (hoff) hoff.onclick = () => { borrarLocal('jab_huella'); toast('Entrada con huella desactivada en este dispositivo.'); renderSeccion(); };
   $('#a-resp').onclick = async () => {
     const archivo = new File([JSON.stringify({catalogo:D, datos:DATOS, fecha:new Date().toISOString()}, null, 2)], `respaldo-jabones-${hoy()}.json`, {type:'application/json'});
     await compartirArchivos([archivo], 'Respaldo de ' + (D.config.nombre || 'Jabones'));
