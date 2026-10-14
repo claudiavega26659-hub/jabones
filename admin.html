@@ -303,7 +303,7 @@ function pantallaSinConfigurar() {
 function pantallaConexion() {
   const previo = leerLocal('jab_github', null);   // versión anterior del panel, sin contraseña
   const editando = ROL === 'admin';
-  const c = CFG || previo || {owner:'', pub:'jabones', priv:'jabones-datos', rama:'main', token:''};
+  const c = CFG || previo || {owner:'emprende-shop', pub:'fragancia-naturaleza', priv:'fragancia-naturaleza-datos', rama:'main', token:''};
   const opcional = editando ? ' (déjala vacía para no cambiarla)' : '';
   $('#admin').innerHTML = `<main class="wrap seccion" style="max-width:680px">
     <div class="sec-cab"><h2>Conexión y contraseñas</h2><button class="btn" id="c-volver">${editando ? 'Volver' : 'Cancelar'}</button></div>
