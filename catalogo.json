@@ -10,16 +10,17 @@
     {
       "id": "ej1",
       "nombre": "Jabon de Arroz y avena",
-      "descripcion": "Elimina manchas",
+      "descripcion": "Elimina manchas, da limpieza profunda, y Regeneración de la piel.",
       "pieles": [
         "normal",
         "seca",
+        "mixta",
         "sensible"
       ],
-      "ingredientes": "Arroz y avena",
+      "ingredientes": "Arroz y avena, miel y vitamina E",
       "uso": "Humedece el jabón, haz espuma entre las manos y masajea la piel. Enjuaga con agua tibia. Guárdalo en una jabonera que escurra.",
       "peso": 100,
-      "precio": 4.5,
+      "precio": 3.5,
       "color": "#f0e3cb",
       "foto": "fotos/ej1-mv2qm38m.jpg",
       "visible": true,
