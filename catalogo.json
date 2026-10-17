@@ -40,7 +40,7 @@
       "peso": 100,
       "precio": 3.5,
       "color": "#3c4240",
-      "foto": "",
+      "foto": "fotos/ej2-mvcnk1j2.jpg",
       "visible": true,
       "agotado": false
     },
